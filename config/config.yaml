@@ -1,0 +1,117 @@
+# ============================================================================
+#  إعدادات بوت الذهب XAU/USD.  المفاتيح السرية لا تُكتب هنا، بل في متغيرات البيئة:
+#  SIFTING_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_ADMIN_IDS  (+ GEMINI_API_KEY)
+#  TELEGRAM_CHANNEL_ID اختياري ويُستخدم لاحقًا عند تفعيل القناة.
+# ============================================================================
+symbol: XAUUSD
+mode: live                  # live = إرسال إلى تيليجرام | paper = تسجيل فقط بدون إرسال
+
+providers:                  # كل مزوّد بيانات قابل للاستبدال من هنا
+  live: siftingio_ws
+  history: siftingio_rest   # siftingio_rest | csv | synthetic (للاختبار فقط)
+  siftingio:
+    ws_url: wss://stream.sifting.io/ws/v1
+    rest_url: https://api.sifting.io
+    product: com            # السلع (الذهب)
+    ping_interval_sec: 30   # الخادم يقطع الاتصال الخامل بعد 90 ثانية
+    silence_reconnect_sec: 120
+    reconnect_min_sec: 1
+    reconnect_max_sec: 60
+  csv: {csv_path: data/xauusd_1m.csv}
+
+telegram:
+  signal_target: private    # private = محادثتك الخاصة مع البوت | channel = القناة | both = الاثنان
+  chart_tf: 5m
+  chart_bars: 100
+
+data:
+  max_tick_age_sec: 20      # أقدم من هذا = لا صفقة
+  history_days: 45          # أيام الشموع 1m المحفوظة للمؤشرات
+  history_retry_sec: 300
+  cache_dir: data/cache
+  max_candle_gap_min: 5     # آخر شمعة 1m يجب أن تكون أحدث من هذا وإلا لا صفقة
+
+analysis:
+  use_ta_library: true      # مكتبة ta؛ إن لم تعمل يستخدم البوت صيغًا داخلية مكافئة
+  swing_lr: 3
+  cycle_offset_sec: 3       # تشغيل التحليل بعد إغلاق كل شمعة دقيقة بهذه الثواني
+
+sessions:                   # ساعات UTC [بداية، نهاية). لا يوجد ضبط تلقائي للتوقيت الصيفي
+  asia: [0, 8]
+  london: [7, 16]
+  new_york: [12, 21]
+sessions_or_minutes: 30
+
+news:
+  events_file: data/events.csv   # datetime_utc,name,impact
+  before_min: 30            # قبل الخبر: لا تداول
+  after_min: 15             # بعد الخبر: انتظار استقرار السوق
+  fetch_timeout_sec: 10
+  cache_ttl_sec: 900
+  # أخبار للاطلاع والشرح فقط؛ لا تتحول تلقائيًا إلى أحداث حظر تداول.
+  sources:
+    - {name: BBC Business, url: https://feeds.bbci.co.uk/news/business/rss.xml}
+    - {name: CNBC Markets, url: https://www.cnbc.com/id/100003114/device/rss/rss.html}
+    - {name: Investing Economic Calendar, url: https://www.investing.com/rss/news_25.rss}
+
+filters:
+  min_efficiency_ratio: 0.12
+  allow_off_hours: false
+
+strategies:
+  enabled: [trend_pullback, liquidity_sweep, breakout, reversal, vwap]
+  min_score: 60
+
+confluence:
+  min_score: 70
+  conflict_margin: 10
+
+probability:
+  min_samples: 30           # أقل من هذا = «غير كافٍ» ولا تظهر نسبة
+  min_win_rate: 0.50
+  min_avg_r: 0.0
+  block_if_insufficient: true   # شغّل أولًا: python -m goldbot backtest --tf all --store
+
+risk:
+  sl_buffer_atr: 0.25
+  min_sl_atr: 0.8
+  max_sl_atr: 3.0
+  rr1: 1.2
+  rr2: 2.4
+  min_rr2: 1.8
+  max_spread: 0.8           # دولار
+  max_spread_to_risk: 0.12
+  tp_buffer_atr: 0.1
+
+signals:
+  cooldown_min: 30
+  max_open_trades: 1
+
+tracking:
+  tp1_partial_pct: 0.5      # نسبة الإغلاق عند الهدف الأول (لحساب R)
+  max_trade_minutes: 1440
+
+ai:
+  enabled: true
+  model: gemini-3.8-flash   # أقوى نموذج مجاني (الطبقة المجانية: Flash و Flash-Lite فقط؛ نماذج Pro ليست مجانية). يُتجاوز بمتغير GEMINI_MODEL
+  fallback_model: gemini-3.7-flash   # يُستخدم تلقائيًا إذا أوقفت Google النموذج الأساسي (404)
+  adapter: null             # "your_module:your_function" ← لاستخدام دالة Gemini الحالية عندك كما هي
+  on_error: block           # block = لا صفقة عند فشل Gemini | pass = تجاهل الخطأ
+  timeout_sec: 30
+
+ml:
+  enabled: false            # فعّله فقط بعد: python -m goldbot train-ml وظهور passed=true
+  model_path: data/ml_model.pkl
+  min_prob: 0.50
+  min_oos_auc: 0.55
+
+backtest:
+  spread: 0.30
+  history_days: 60
+  steps: {1m: 5, 5m: 1, 15m: 1}
+  report_dir: reports
+
+paths:
+  journal: data/journal.sqlite
+  log_dir: logs
+log_level: INFO
