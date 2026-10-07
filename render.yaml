@@ -1,0 +1,22 @@
+# Render Blueprint. Free web services SLEEP after 15 min without inbound HTTP -> the WebSocket feed would die.
+# Use a paid instance (starter) or any VPS for 24/7 operation.
+services:
+  - type: web                # a worker (type: worker) also works and needs no health check
+    name: gold-signals-bot
+    runtime: docker
+    plan: starter
+    healthCheckPath: /health
+    autoDeploy: true
+    disk:                    # keeps the journal / history cache across deploys (paid plans only)
+      name: bot-data
+      mountPath: /app/data
+      sizeGB: 1
+    envVars:
+      - {key: SIFTING_API_KEY, sync: false}
+      - {key: TELEGRAM_BOT_TOKEN, sync: false}
+      - {key: TELEGRAM_CHANNEL_ID, sync: false}   # اختياري (للقناة لاحقًا)
+      - {key: TELEGRAM_ADMIN_IDS, sync: false}
+      - {key: GEMINI_API_KEY, sync: false}
+      - {key: GEMINI_MODEL, sync: false}
+      - {key: GEMINI_FALLBACK_MODEL, sync: false}
+      - {key: EVENTS_CSV_URL, sync: false}
