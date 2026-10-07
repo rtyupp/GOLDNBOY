@@ -1,0 +1,148 @@
+"""طبقة المراجعة النهائية = Gemini.  النموذج الافتراضي: gemini-3.8-flash (أقوى نموذج مجاني حسب صفحة أسعار Google، سبتمبر 2026)
+ويُضبط من config: ai.model أو متغير GEMINI_MODEL. البديل التلقائي عند الإيقاف: ai.fallback_model (الافتراضي gemini-3.7-flash).
+
+خياران للربط:
+ أ) ai.adapter: "your_module:your_function"  -> دالتك الحالية كما هي (def f(prompt:str)->str, عادية أو async).
+ ب) استدعاء REST مباشر بـ GEMINI_API_KEY + النموذج أعلاه.
+
+Gemini يراجع بطاقة التحليل فقط ويرد BUY / SELL / NO TRADE؛ لا يستطيع تغيير الدخول أو SL أو TP.
+
+ملاحظة: نماذج Gemini 2.5 مجدولة للإيقاف في 16 أكتوبر 2026 (404 بعدها). عند اكتشاف إيقاف أي نموذج
+يرسل البوت تنبيهًا عربيًا، ويستخدم ai.fallback_model إن وُجد، وإلا يكون القرار «لا صفقة».
+الطبقة المجانية: محتوى الطلبات قد تستخدمه Google لتحسين منتجاتها (البطاقة تحتوي تحليل سوق فقط، بلا بيانات شخصية).
+"""
+from __future__ import annotations
+import asyncio, base64, importlib, json, logging, os, re
+from dataclasses import dataclass
+from typing import Callable, Optional
+import requests
+
+log = logging.getLogger("ai")
+DEFAULT_MODEL = "gemini-3.8-flash"
+
+SYSTEM = (
+    "أنت المراجع النهائي للمخاطر في نظام تداول الذهب (XAUUSD). تستلم بطاقة تحليل محسوبة مسبقًا. "
+    "القواعد: لا تخترع ولا تعدّل الدخول أو وقف الخسارة أو الأهداف؛ احكم فقط بما في البطاقة؛ "
+    "إذا كانت البيانات متناقضة أو الإعداد ضعيف أو السوق غير واضح فالجواب NO TRADE. "
+    "درجة التقاطع ليست احتمال ربح. اكتب السبب بالعربية في جملة قصيرة (25 كلمة كحد أقصى). "
+    'أجب بـ JSON فقط بهذا الشكل: {"decision":"BUY|SELL|NO TRADE","reason":"..."}'
+)
+
+
+class ModelRetired(RuntimeError):
+    pass
+
+
+@dataclass
+class AIDecision:
+    decision: str          # BUY | SELL | NO TRADE
+    reason: str
+    ok: bool = True        # False عند فشل الاستدعاء
+    raw: str = ""
+
+
+def parse_decision(text: str) -> AIDecision:
+    t = (text or "").strip()
+    t = re.sub(r"^```(?:json)?|```$", "", t.strip(), flags=re.M).strip()
+    try:
+        j = json.loads(t)
+        d = str(j.get("decision", "")).upper().replace("_", " ").strip()
+        if d in ("BUY", "SELL", "NO TRADE"):
+            return AIDecision(d, str(j.get("reason", ""))[:200], True, text)
+    except (ValueError, AttributeError):
+        pass
+    m = re.search(r'"decision"\s*:\s*"(BUY|SELL|NO[ _]TRADE)"', t, re.I)
+    if m:
+        return AIDecision(m.group(1).upper().replace("_", " "), "تم استخراج القرار من رد غير منسّق", True, text)
+    return AIDecision("NO TRADE", "رد الذكاء الاصطناعي غير مفهوم", False, text)
+
+
+class GeminiLayer:
+    def __init__(self, cfg, session: requests.Session | None = None):
+        self.enabled = bool(cfg.get("ai.enabled", True))
+        self.on_error = cfg.get("ai.on_error", "block")      # block (لا صفقة عند الخطأ) | pass
+        self.timeout = float(cfg.get("ai.timeout_sec", 30))
+        self.model = os.environ.get("GEMINI_MODEL") or cfg.get("ai.model") or DEFAULT_MODEL
+        self.fallback_model = os.environ.get("GEMINI_FALLBACK_MODEL") or cfg.get("ai.fallback_model")
+        self.adapter: Optional[Callable] = None
+        spec = cfg.get("ai.adapter")
+        if spec:
+            mod, fn = spec.split(":")
+            self.adapter = getattr(importlib.import_module(mod), fn)
+        self.s = session or requests.Session()
+        self.calls = 0
+        self.alert: Callable[[str], None] = lambda text: None     # يضبطه التطبيق لإرسال تنبيه
+        self._alerted = False
+
+    async def _ask(self, prompt: str, image: Optional[bytes] = None) -> str:
+        if self.adapter is not None:                 # دالتك الحالية: نص فقط
+            r = self.adapter(prompt)
+            if asyncio.iscoroutine(r):
+                r = await r
+            return str(r)
+        return await asyncio.to_thread(self._rest_with_fallback, prompt, image)
+
+    def _rest_with_fallback(self, prompt: str, image: Optional[bytes] = None) -> str:
+        try:
+            return self._rest(prompt, self.model, image)
+        except ModelRetired:
+            self._alert_once(f"⚠️ نموذج Gemini «{self.model}» لم يعد متاحًا (أوقفته Google). "
+                             + (f"سأستخدم النموذج البديل «{self.fallback_model}»." if self.fallback_model
+                                else "القرار الآن «لا صفقة» حتى تحدد نموذجًا بديلًا في ai.model أو GEMINI_MODEL."))
+            if self.fallback_model:
+                return self._rest(prompt, self.fallback_model, image)
+            raise
+
+    def _alert_once(self, text: str):
+        log.error(text)
+        if not self._alerted:
+            self._alerted = True
+            self.alert(text)
+
+    def _post(self, model: str, body: dict) -> dict:
+        key = os.environ.get("GEMINI_API_KEY")
+        if not key:
+            raise RuntimeError("حدد ai.adapter في config.yaml أو ضع GEMINI_API_KEY")
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        r = self.s.post(url, json=body, headers={"x-goog-api-key": key}, timeout=self.timeout)
+        if r.status_code == 404:
+            raise ModelRetired(model)
+        r.raise_for_status()
+        return r.json()
+
+    def generate(self, body: dict) -> dict:
+        """استدعاء عام (أدوات/صور) مع البديل التلقائي عند إيقاف النموذج. متزامن: استدعه عبر to_thread."""
+        try:
+            return self._post(self.model, body)
+        except ModelRetired:
+            self._alert_once(f"⚠️ نموذج Gemini «{self.model}» لم يعد متاحًا (أوقفته Google). "
+                             + (f"سأستخدم النموذج البديل «{self.fallback_model}»." if self.fallback_model
+                                else "القرار الآن «لا صفقة» حتى تحدد نموذجًا بديلًا في ai.model أو GEMINI_MODEL."))
+            if self.fallback_model:
+                return self._post(self.fallback_model, body)
+            raise
+
+    def _rest(self, prompt: str, model: str, image: Optional[bytes] = None) -> str:
+        parts = [{"text": prompt}]
+        if image:
+            parts.append({"inlineData": {"mimeType": "image/png", "data": base64.b64encode(image).decode()}})
+        body = {"systemInstruction": {"parts": [{"text": SYSTEM}]},
+                "contents": [{"role": "user", "parts": parts}],
+                "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"}}
+        return self._post(model, body)["candidates"][0]["content"]["parts"][0]["text"]
+
+    async def decide(self, card: str, candidate: str, image: Optional[bytes] = None) -> AIDecision:
+        if not self.enabled:
+            return AIDecision(candidate, "طبقة الذكاء الاصطناعي معطّلة في الإعدادات", True)
+        prompt = f"{SYSTEM}\n\nبطاقة التحليل:\n{card}\n" + ("\nمرفق صورة الشارت: تحقق أن ما تراه فيها (الاتجاه، مناطق العرض/الطلب، سحب السيولة، مواضع الدخول والوقف والأهداف) يتفق مع البطاقة، وإلا فالجواب NO TRADE.\n" if image else "") + "\nأجب بـ JSON فقط."
+        try:
+            self.calls += 1
+            raw = await asyncio.wait_for(self._ask(prompt, image), timeout=self.timeout + 5)
+            return parse_decision(raw)
+        except ModelRetired:
+            return AIDecision("NO TRADE", f"نموذج Gemini «{self.model}» متوقف", False)
+        except Exception as e:
+            log.error("فشل استدعاء Gemini: %s", e)
+            if self.on_error == "pass":
+                return AIDecision(candidate, f"تم تجاهل خطأ الذكاء الاصطناعي: {e}", False)
+            return AIDecision("NO TRADE", f"خطأ في الذكاء الاصطناعي ({type(e).__name__})", False)
