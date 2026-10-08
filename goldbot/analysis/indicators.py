@@ -88,7 +88,10 @@ def add_indicators(df: pd.DataFrame, use_ta: bool = True) -> pd.DataFrame:
     d = df.copy()
     c, h, l, v = d["close"], d["high"], d["low"], d["volume"]
     done = False
-    if use_ta and HAVE_TA and not _TA_BROKEN:
+    # ta's long windows (EMA/SMA 200) are not meaningful on a short startup
+    # frame.  Do not call it there: a one-off short-data IndexError must not
+    # permanently disable ta for the rest of the process.
+    if use_ta and HAVE_TA and not _TA_BROKEN and len(d) >= 200:
         try:
             _ta_block(d, c, h, l, True)
             done = True

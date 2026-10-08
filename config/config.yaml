@@ -27,6 +27,7 @@ telegram:
 data:
   max_tick_age_sec: 20      # أقدم من هذا = لا صفقة
   history_days: 60          # أيام الشموع 1m المحفوظة للمؤشرات (≈ 60 طلب REST في أول تحميل فقط)
+  min_history_rows: 14400   # نحو 60 شمعة 4H؛ أقل من ذلك لا يبدأ التحليل
   history_retry_sec: 300
   cache_dir: data/cache
   max_candle_gap_min: 5     # آخر شمعة 1m يجب أن تكون أحدث من هذا وإلا لا صفقة

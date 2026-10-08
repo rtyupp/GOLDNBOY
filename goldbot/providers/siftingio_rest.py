@@ -41,21 +41,50 @@ class SiftingRestHistory(HistoryProvider):
         if interval not in INTERVALS:
             raise ValueError(f"interval {interval} unsupported by REST")
         url = f"{self.base}/v1/hist/commodities/{self.symbol}/bars"
-        params = {"start": pd.Timestamp(start).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                  "end": pd.Timestamp(end).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                  "interval": interval, "limit": self.page, "order": "asc"}
-        rows, cursor, n = [], None, 0
-        while n < self.max_calls:
-            p = {"cursor": cursor} if cursor else params
-            j = self._get(url, p)
-            rows.extend(j.get("data", []))
-            cursor = (j.get("meta") or {}).get("next_cursor")
-            n += 1
-            if not cursor:
-                break
+        start, end = pd.Timestamp(start), pd.Timestamp(end)
+        if start.tzinfo is None:
+            start = start.tz_localize("UTC")
+        else:
+            start = start.tz_convert("UTC")
+        if end.tzinfo is None:
+            end = end.tz_localize("UTC")
+        else:
+            end = end.tz_convert("UTC")
+
+        fetch_limit = self.calls + self.max_calls
+
+        def page(a, b, budget):
+            params = {"start": a.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                      "end": b.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                      "interval": interval, "limit": self.page, "order": "asc"}
+            rows, cursor = [], None
+            while self.calls < budget:
+                p = {"cursor": cursor} if cursor else params
+                j = self._get(url, p)
+                data = j.get("data", [])
+                if not isinstance(data, list):
+                    raise RuntimeError("sifting REST returned invalid data")
+                rows.extend(data)
+                cursor = (j.get("meta") or {}).get("next_cursor")
+                if not cursor:
+                    break
+            return rows
+
+        rows = page(start, end, fetch_limit)
+        # A multi-hour range returning one bar is an upstream short page, not
+        # a valid backfill. Retry in daily windows instead of silently starting
+        # the bot with one candle (the failure seen in the Render log).
+        if len(rows) <= 1 and end - start > pd.Timedelta(hours=6) and self.calls < fetch_limit:
+            rows = []
+            cursor = start
+            while cursor < end and self.calls < fetch_limit:
+                nxt = min(cursor + pd.Timedelta(days=1), end)
+                rows.extend(page(cursor, nxt, fetch_limit))
+                cursor = nxt
         if not rows:
             return pd.DataFrame(columns=OHLCV, index=pd.DatetimeIndex([], tz="UTC"))
         df = pd.DataFrame(rows)
         df.index = pd.to_datetime(df["t"], unit="ms", utc=True)
         df = df.rename(columns={"o": "open", "h": "high", "l": "low", "c": "close", "v": "volume"})[OHLCV]
-        return df.astype(float)
+        df = df.astype(float).sort_index()
+        return df[~df.index.duplicated(keep="last")]

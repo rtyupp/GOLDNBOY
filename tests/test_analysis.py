@@ -89,6 +89,12 @@ class TestLiquidity(unittest.TestCase):
 
 
 class TestIndicators(unittest.TestCase):
+    def test_short_startup_frame_uses_safe_internal_indicators(self):
+        df = ohlc([(1, 2, 0.5, 1.5)] * 20, freq="1min")
+        out = add_indicators(df, use_ta=True)
+        self.assertEqual(len(out), 20)
+        self.assertIn("atr", out.columns)
+
     def test_rsi_extremes_and_columns(self):
         up = pd.Series(np.arange(1, 80, dtype=float))
         self.assertGreater(_rsi(up).iloc[-1], 99)

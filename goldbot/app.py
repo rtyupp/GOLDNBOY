@@ -73,6 +73,9 @@ class BotApp:
             try:
                 df = await asyncio.to_thread(load_cached, self.history_provider, self.cfg.get("symbol", "XAUUSD"), "1m",
                                              int(self.cfg.get("data.history_days", 45)), self.cfg.get("data.cache_dir", "data/cache"))
+                min_rows = int(self.cfg.get("data.min_history_rows", 14400))
+                if len(df) < min_rows:
+                    raise RuntimeError(f"التاريخ غير كافٍ: {len(df)} شمعة 1m (المطلوب {min_rows})")
                 self.md.load_history(df)
                 self.md.history_error = None
                 log.info("تم تحميل البيانات التاريخية: %s", self.md.summary())
