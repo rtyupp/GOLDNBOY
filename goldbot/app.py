@@ -178,6 +178,9 @@ class BotApp:
         tk = self.ticks.last
         if not tk.has_quote:
             return False, "NO_QUOTE(bid/ask missing)"
+        min_rows = int(self.cfg.get("data.min_history_rows", 14400))
+        if self.md.history_rows < min_rows:
+            return False, f"INSUFFICIENT_HISTORY({self.md.history_rows}<{min_rows})"
         lc = self.md.last_base_close()
         if lc is None:
             return False, "NO_CANDLES" + (f"(history error: {self.md.history_error})" if self.md.history_error else "")

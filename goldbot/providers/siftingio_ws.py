@@ -96,6 +96,10 @@ class SiftingWSProvider(LiveProvider):
             delay = min(self.bmax, backoff) * (0.8 + 0.4 * random.random())
             if self.fatal_auth:
                 delay = max(delay, 60.0)       # bad key: do not hammer the server
+            if "max connection" in (self.last_error or "").lower():
+                # A rolling deploy can briefly overlap the old instance. The
+                # free tier allows one connection, so wait instead of hammering.
+                delay = max(delay, 300.0)
             log.info("إعادة الاتصال بعد %.1f ثانية", delay)
             await asyncio.sleep(delay)
             backoff = min(self.bmax, backoff * 2)

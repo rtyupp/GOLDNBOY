@@ -50,6 +50,17 @@ class TestRiskEngine(unittest.TestCase):
 
 
 class TestE2E(unittest.IsolatedAsyncioTestCase):
+    async def test_live_candle_does_not_make_history_ready(self):
+        app = BotApp(cfg(paths__journal=os.path.join(tempfile.mkdtemp(), "j.sqlite"), paths__log_dir=tempfile.mkdtemp()),
+                     tg=FakeTG(), history_provider=SyntheticHistory())
+        now_ms = int(time.time() * 1000)
+        app.ticks.set_connected(True)
+        app.ticks.on_tick(Tick(now_ms, 2650.0, 2650.2, 2650.1, now_ms))
+        app.md.history_rows = 0
+        ok, why = app.data_status(pd.Timestamp.now(tz="UTC"))
+        self.assertFalse(ok)
+        self.assertTrue(why.startswith("INSUFFICIENT_HISTORY"))
+
     async def test_stale_data_gives_no_trade_with_reason(self):
         app = BotApp(cfg(paths__journal=os.path.join(tempfile.mkdtemp(), "j.sqlite"), paths__log_dir=tempfile.mkdtemp()), tg=FakeTG(), history_provider=SyntheticHistory())
         cand = await app.cycle()

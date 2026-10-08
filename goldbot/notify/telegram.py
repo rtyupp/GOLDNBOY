@@ -214,6 +214,13 @@ class CommandBot:
         while not self._stop:
             err_before = getattr(self.tg, "last_error", None)
             ups = await asyncio.to_thread(self.tg.get_updates, self.offset, 25)
+            le = getattr(self.tg, "last_error", None) or ""
+            if "getUpdates" in le and "Conflict" in le:
+                # Telegram permits only one long-polling consumer per bot
+                # token. Do not spin and flood logs while another instance
+                # still owns the polling lease.
+                log.error("تعارض getUpdates: سيتم تعطيل استقبال الأوامر لهذه النسخة")
+                return
             for u in ups:
                 self.offset = u["update_id"] + 1
                 t = asyncio.create_task(self._safe(u))        # كل رسالة في مهمة مستقلة: الرد البطيء لا يوقف الاستقبال
