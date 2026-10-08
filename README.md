@@ -11,6 +11,8 @@ History (REST/CSV) ────────────────────�
 
 ## 1) التشغيل المحلي (5 دقائق)
 
+يبدأ `config/config.yaml` في وضع `paper` الآمن، أي يسجل الإشارات ولا يرسلها. شغّل الاختبارات والـBacktest أولًا، ولا تغيّر إلى `mode: live` إلا بعد مراجعة النتائج يدويًا؛ هذه الأداة ترسل إشارات تيليجرام ولا تنفّذ أوامر لدى وسيط.
+
 ```bash
 pip install -r requirements.txt
 cp .env.example .env        # املأ المفاتيح، ثم:  export $(grep -v '^#' .env | xargs)

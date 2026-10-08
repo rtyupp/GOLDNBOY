@@ -18,6 +18,9 @@ class MarketData:
         self.base = pd.DataFrame({c: pd.Series(dtype="float64") for c in OHLCV}, index=pd.DatetimeIndex([], tz="UTC"))
         self.max_rows = max_rows
         self.live_candles = 0
+        # Keep identity, not only a counter: an update to the same minute must
+        # not make the next history refresh slice unrelated historical rows.
+        self._live_timestamps: set[pd.Timestamp] = set()
         self.history_rows = 0
         self.history_error: Optional[str] = None
         self.spreads: Dict[int, float] = {}
@@ -27,10 +30,12 @@ class MarketData:
     def load_history(self, df: pd.DataFrame):
         df = normalize_ohlcv(df)
         with self._lock:
-            live = self.base.iloc[-self.live_candles:] if self.live_candles else self.base.iloc[0:0]
+            live = self.base.loc[self.base.index.isin(self._live_timestamps)] if self._live_timestamps else self.base.iloc[0:0]
             self.base = pd.concat([df, live]).astype("float64")
             self.base = self.base[~self.base.index.duplicated(keep="last")].sort_index()
             self.history_rows = len(df)
+            self._live_timestamps.intersection_update(set(self.base.index))
+            self.live_candles = len(self._live_timestamps)
             self._trim()
 
     def add_closed(self, c: Candle):
@@ -42,7 +47,8 @@ class MarketData:
             if ts in self.base.index:
                 self.base = self.base.drop(index=ts)
             self.base = pd.concat([self.base, row]).astype("float64").sort_index()
-            self.live_candles += 1
+            self._live_timestamps.add(ts)
+            self.live_candles = len(self._live_timestamps)
             if c.avg_spread is not None:
                 self.spreads[c.t0] = c.avg_spread
                 if len(self.spreads) > 2000:
@@ -53,6 +59,8 @@ class MarketData:
     def _trim(self):
         if len(self.base) > self.max_rows:
             self.base = self.base.iloc[-self.max_rows:]
+        self._live_timestamps.intersection_update(set(self.base.index))
+        self.live_candles = len(self._live_timestamps)
 
     def last_base_close(self) -> Optional[pd.Timestamp]:
         if self.base.empty:

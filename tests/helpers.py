@@ -5,6 +5,9 @@ from goldbot.config import Cfg, load_config
 
 def cfg(**over):
     c = load_config("config/config.yaml")
+    # Integration tests with FakeTG exercise the delivery path explicitly;
+    # production config remains paper-by-default for safety.
+    c.set("mode", "live")
     for k, v in over.items():
         c.set(k.replace("__", "."), v)
     return c

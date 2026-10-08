@@ -105,6 +105,17 @@ class TestFreshness(unittest.TestCase):
         s.on_tick(Tick(1000, 9, 9.1, 9, 2001))
         self.assertEqual(s.last.bid, 1)
 
+    def test_market_data_replacing_live_minute_keeps_live_count(self):
+        from goldbot.core.market_data import MarketData
+        from goldbot.core.candle_builder import Candle
+
+        md = MarketData()
+        t0 = 1_700_000_000_000
+        md.add_closed(Candle(t0, 100, 101, 99, 100.5, 1, None))
+        md.add_closed(Candle(t0, 100, 102, 98, 101, 2, None))
+        self.assertEqual(md.live_candles, 1)
+        self.assertEqual(len(md.base), 1)
+
 
 class TestCandles(unittest.TestCase):
     def test_builds_1m_and_flushes(self):
