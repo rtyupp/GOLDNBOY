@@ -372,7 +372,7 @@ class TestSupervisorAndNewsRefresh(unittest.IsolatedAsyncioTestCase):
         import goldbot.app as A
         from goldbot.analysis.news import FetchResult, parse_feed as pf
         os.environ["GEMINI_API_KEY"] = "k"
-        c, app = mkapp()
+        c, app = mkapp(news__ai_fallback=True)
         limited = FetchResult(None, ["nfs: HTTP 429"], 0.0, True)
         A.fetch_ff = lambda *a, **k: limited
         A.fetch_via_gemini = lambda g, now, cur: pf(SAMPLE)

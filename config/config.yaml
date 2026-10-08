@@ -26,7 +26,7 @@ telegram:
 
 data:
   max_tick_age_sec: 20      # أقدم من هذا = لا صفقة
-  history_days: 60          # أيام الشموع 1m المحفوظة للمؤشرات (≈ 60 طلب REST في أول تحميل فقط)
+  history_days: 28          # الباقة المجانية تغطي نحو شهر؛ 28 يومًا كافٍ للفريمات العليا
   min_history_rows: 14400   # نحو 60 شمعة 4H؛ أقل من ذلك لا يبدأ التحليل
   history_retry_sec: 300
   cache_dir: data/cache
@@ -47,7 +47,7 @@ news:
   auto_feed: true           # جلب تقويم الأخبار آليًا (Forex Factory المجاني، بدون مفتاح) كل refresh_min دقيقة
   refresh_min: 60
   currencies: [USD]         # العملات المؤثرة على الذهب (الدولار)
-  ai_fallback: true         # إن تعطل Forex Factory (429 مثلًا) ولا يوجد تقويم حديث: بحث Gemini على الويب كاحتياط (أقل دقة)
+  ai_fallback: false        # لا نهدر حصة Gemini عند تعطل التقويم؛ غياب التقويم = لا صفقة بأمان
   cache_path: data/news_cache.json
   require_calendar: true    # إن تعذّر التقويم أكثر من max_age_hours: لا صفقة احتياطًا
   max_age_hours: 36
@@ -111,7 +111,7 @@ ml:
 
 bootstrap:                  # تهيئة ذاتية: Backtest ثم تدريب ML في عملية فرعية منخفضة الأولوية
   enabled: true
-  days: 60
+  days: 28                  # متوافق مع عمق التاريخ في الباقة المجانية
   tfs: [5m, 15m]            # أضف 1m إن كان عندك ذاكرة ومعالج كافيان (أبطأ بكثير)
   min_trades: 150           # أقل من هذا في السجل ← يُعاد البناء تلقائيًا
   refresh_days: 7           # تحديث السجل وإعادة تدريب ML كل أسبوع
@@ -120,7 +120,7 @@ bootstrap:                  # تهيئة ذاتية: Backtest ثم تدريب ML
 
 backtest:
   spread: 0.30
-  history_days: 60
+  history_days: 28
   steps: {1m: 5, 5m: 1, 15m: 1}
   report_dir: reports
 

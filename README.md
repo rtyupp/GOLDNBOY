@@ -72,7 +72,7 @@ python -m goldbot run
 1. ارفع المجلد إلى GitHub (الملف `.env` ممنوع، `.gitignore` يحميه).
 2. Render ← New ← **Blueprint** ← اختر المستودع (يقرأ `render.yaml`)، أو New Web Service ← Docker.
 3. أضف المتغيرات في Environment (القائمة في `.env.example`).
-4. أول مرة: افتح Shell في Render ونفّذ `python -m goldbot backtest --tf all --days 60 --store` ثم أعد التشغيل.
+4. أول مرة: افتح Shell في Render ونفّذ `python -m goldbot backtest --tf all --days 28 --store` ثم أعد التشغيل.
 
 **تنبيهات صادقة عن Render:**
 - الخطة المجانية **تنام** بعد 15 دقيقة بلا طلبات HTTP فينقطع الـWebSocket. للتشغيل 24/7 استخدم خطة مدفوعة (starter) أو VPS (`docker compose up -d`).
@@ -115,7 +115,7 @@ python -m goldbot run
 - الذهب الفوري ليس له حجم حقيقي: **Volume = عدد الـticks** (يظهر في VWAP وRelative Volume).
 - مواعيد الجلسات ثابتة بتوقيت UTC (لا ضبط تلقائي للتوقيت الصيفي) — عدّلها في `sessions` مرتين في السنة.
 - الشمعة اليومية تبدأ 00:00 UTC (بعض الوسطاء 21:00/22:00).
-- الخطة المجانية لـSiftingIO REST: 10,000 طلب/شهر. البوت يخزّن التاريخ محليًا ويحمّل فقط الجزء الناقص (~1 طلب لكل 1.4 يوم عند أول تحميل).
+- الخطة المجانية لـSiftingIO REST: 10,000 طلب/شهر وعمق تاريخ يقارب شهرًا؛ الإعداد الافتراضي 28 يومًا حتى لا يطلب البوت تاريخًا خارج الباقة.
 - في الـBacktest الـSpread ثابت (0.30) ولا يوجد تقويم أخبار تاريخي.
 - استدعاء الأدوات والصور مع Gemini مختبر بخادم وهمي فقط؛ لم أجرّبه على Gemini الحقيقي.
 - `Confidence` في رسالة Telegram هو **Confluence Score** وليس احتمال ربح. الاحتمال يظهر فقط من عينة تاريخية فعلية مع حجمها (n).
