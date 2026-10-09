@@ -7,8 +7,16 @@ symbol: XAUUSD
 mode: paper                 # آمن افتراضيًا: تسجيل فقط. غيّره إلى live بعد التحقق اليدوي من النتائج.
 
 providers:                  # كل مزوّد بيانات قابل للاستبدال من هنا
-  live: siftingio_ws
-  history: siftingio_rest   # siftingio_rest | csv | synthetic (للاختبار فقط)
+  live: oanda_stream        # OANDA Practice أولًا؛ يرجع إلى SiftingIO إذا لم توجد بيانات OANDA
+  history: oanda_rest        # oanda_rest | siftingio_rest | csv | synthetic (للاختبار فقط)
+  oanda:
+    instrument: XAU_USD
+    rest_url: https://api-fxpractice.oanda.com
+    stream_url: https://stream-fxpractice.oanda.com
+    oanda_page_limit: 5000
+    oanda_max_calls: 80
+    oanda_reconnect_min_sec: 2
+    oanda_reconnect_max_sec: 60
   siftingio:
     ws_url: wss://stream.sifting.io/ws/v1
     rest_url: https://api.sifting.io
@@ -93,7 +101,7 @@ tracking:
   max_trade_minutes: 1440
 
 ai:
-  enabled: true
+  enabled: false             # لا حصة خارجية؛ القرار المحلي متعدد الفلاتر يعمل دون Gemini
   model: gemini-3.8-flash   # أقوى نموذج مجاني (الطبقة المجانية: Flash و Flash-Lite فقط؛ نماذج Pro ليست مجانية). يُتجاوز بمتغير GEMINI_MODEL
   fallback_model: gemini-3.7-flash   # يُستخدم تلقائيًا إذا أوقفت Google النموذج الأساسي (404)
   adapter: null             # "your_module:your_function" ← لاستخدام دالة Gemini الحالية عندك كما هي

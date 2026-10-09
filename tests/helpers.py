@@ -8,6 +8,9 @@ def cfg(**over):
     # Integration tests with FakeTG exercise the delivery path explicitly;
     # production config remains paper-by-default for safety.
     c.set("mode", "live")
+    # Unit/integration tests exercise the Gemini adapter with fake sessions;
+    # production disables the external quota by default.
+    c.set("ai.enabled", True)
     for k, v in over.items():
         c.set(k.replace("__", "."), v)
     return c
