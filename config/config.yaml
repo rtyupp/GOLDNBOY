@@ -109,11 +109,11 @@ tracking:
   max_trade_minutes: 1440
 
 ai:
-  enabled: false             # لا حصة خارجية؛ القرار المحلي متعدد الفلاتر يعمل دون Gemini
+  enabled: true              # Gemini مفعّل للمحادثة والتحليل؛ يتطلب GEMINI_API_KEY
   model: gemini-3.8-flash   # أقوى نموذج مجاني (الطبقة المجانية: Flash و Flash-Lite فقط؛ نماذج Pro ليست مجانية). يُتجاوز بمتغير GEMINI_MODEL
   fallback_model: gemini-3.7-flash   # يُستخدم تلقائيًا إذا أوقفت Google النموذج الأساسي (404)
   adapter: null             # "your_module:your_function" ← لاستخدام دالة Gemini الحالية عندك كما هي
-  on_error: block           # block = لا صفقة عند فشل Gemini | pass = تجاهل الخطأ
+  on_error: pass           # block = لا صفقة عند فشل Gemini | pass = تجاهل الخطأ
   timeout_sec: 30           # مهلة مراجعة الإشارة
   chat_timeout_sec: 15      # مهلة كل استدعاء في محادثة تيليجرام (بعدها ينتقل للنموذج البديل ثم يرد البوت محليًا)
   chat_thinking_level: low  # تفكير أقل = رد أسرع في المحادثة (minimal|low|medium|high)؛ إن رفضه النموذج يُتجاهل تلقائيًا
