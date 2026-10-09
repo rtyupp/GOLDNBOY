@@ -2,12 +2,13 @@
 
 ## الخلاصة التنفيذية
 
-أفضل حل مجاني فعلي وجدته للبث اللحظي هو **Swissquote Public Quotes**: endpoint عام يعيد Bid/Ask لـ XAU/USD وتوقيتًا دون API key أو حساب. لا يقدم شموعًا جاهزة، لذلك يبني GOLDNBOY شموع M1/M5 محليًا من اللقطات. التاريخ التاريخي يبقى من SiftingIO عند الحاجة. هذا سعر مرجعي من مزود وليس ضمان سعر تنفيذ لدى أي وسيط.
+أفضل حل مجاني فعلي وجدته للبث اللحظي هو **Swissquote Public Quotes**: endpoint عام يعيد Bid/Ask لـ XAU/USD وتوقيتًا دون API key أو حساب. لا يقدم شموعًا جاهزة، لذلك يبني GOLDNBOY شموع M1/M5 محليًا من اللقطات. وللتاريخ يستخدم **Dukascopy DataFeed** ملفات ticks المجانية بصيغة bi5 بلا مفتاح، ثم يفكها ويبني OHLCV؛ عند غياب ساعة أو تاريخ يرجع إلى SiftingIO.
 
 ## القرار
 
 - **المصدر اللحظي الأساسي:** Swissquote Public Quotes: https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAU/USD
-- **التاريخ:** SiftingIO REST، بتحميل 28 يومًا عند الحاجة وليس polling لحظيًا.
+- **التاريخ الأساسي:** Dukascopy DataFeed ticks، بلا API key؛ تحويل محلي إلى 1m/5m.
+- **التاريخ الاحتياطي:** SiftingIO REST، بتحميل 28 يومًا عند الحاجة وليس polling لحظيًا.
 - **الخيار الاختياري:** OANDA Practice، لكنه يحتاج حسابًا/توكنًا ولا يعتمد عليه الإعداد الافتراضي.
 - **مرفوض:** Yahoo Finance وStooq كمصدر لحظي؛ غير موثقين كواجهة XAU/USD M1/M5 مناسبة لبوت.
 - **غير كافٍ للإشارات السريعة على المجاني:** Alpha Vantage، Metals.Dev، GoldAPI.io بسبب حصص شهرية صغيرة أو عدم وجود شموع M1/M5 أصلية.
@@ -20,6 +21,8 @@
 - OANDA pricing stream: https://developer.oanda.com/rest-live-v20/pricing-ep/
 - OANDA instruments/candles: https://developer.oanda.com/rest-live-v20/instrument-ep/
 - Swissquote public XAU/USD quote endpoint: https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAU/USD
+- Dukascopy historical export: https://www.dukascopy.com/swiss/english/marketwatch/historical/
+- Dukascopy public datafeed: http://datafeed.dukascopy.com/datafeed/XAUUSD/
 - Twelve Data commodities: https://twelvedata.com/commodities
 - Twelve Data pricing: https://twelvedata.com/pricing.md
 - Alpha Vantage gold: https://www.alphavantage.co/documentation/#gold-silver-spot
@@ -34,5 +37,6 @@
 - OANDA stream ليس كل tick بلا فقد: يرسل بحد أقصى 4 أسعار/ثانية للأداة، لكنه real-time لدى الوسيط.
 - OANDA Practice يتطلب Account ID وPersonal Access Token.
 - Swissquote لا يوثق في endpoint العام حدًا رقميًا للطلبات؛ لذلك الإعداد المحافظ يطلب كل 5 ثوانٍ، ويطبق backoff عند الفشل، ولا يدّعي أن المصدر feed تنفيذي مضمون.
+- Dukascopy قد لا يملك ملفًا لكل ساعة بسبب عطلة السوق أو نقص upstream؛ الكود لا يعتبر النقص نجاحًا ويحوّل تلقائيًا إلى SiftingIO.
 - لا توجد استراتيجية تضمن الربح. أفضل تصميم قابل للاختبار هو اتجاه 15m/5m مع تأكيد M1، منع التداول في التعارض والأخبار والسبريد العالي، ووقف ATR ثابت المخاطرة.
 - لا يتم تشغيل التداول الحقيقي أو تنفيذ أوامر؛ GOLDNBOY يرسل إشارات فقط.

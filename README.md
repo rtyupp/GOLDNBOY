@@ -106,7 +106,7 @@ python -m goldbot run
 
 - **لم أتصل بخوادم SiftingIO/Telegram/Gemini الحقيقية** (بيئة البناء بلا إنترنت). الـWebSocket والـREST مبنيان على توثيقهم الرسمي ومختبران بخادم وهمي. شغّل `python -m goldbot check` أولًا.
 - مكتبة `ta` تُستخدم فقط بعد توفر 200 شمعة على الأقل؛ في بداية التشغيل تُستخدم الصيغ الداخلية بدون إصدار خطأ أو تعطيل دائم للمكتبة.
-- المصدر اللحظي الافتراضي هو Swissquote Public Quotes، بلا API key أو حساب؛ يبني شموع M1/M5 محليًا من Bid/Ask. التاريخ يبقى من SiftingIO عند الحاجة فقط.
+- المصدر اللحظي الافتراضي هو Swissquote Public Quotes، بلا API key أو حساب؛ يبني شموع M1/M5 محليًا من Bid/Ask. المصدر التاريخي الافتراضي Dukascopy المجاني، مع رجوع تلقائي إلى SiftingIO إذا غابت ملفات الساعات.
 - Gemini معطّل افتراضيًا حتى لا يعتمد البوت على حصة خارجية؛ طبقة التقاطع والفلاتر وإدارة المخاطر المحلية هي التي تمنع الإشارة الضعيفة.
 - `vectorbt` اختياري (`vectorbt_cross_check`) وغير مجرَّب. الـBacktest الأساسي مكتوب داخليًا ليستخدم **نفس كود التداول الحي**.
 - **نتائج الـBacktest على بياناتك الحقيقية غير معروفة لي.** لا تثق بالاستراتيجيات قبل تشغيلها ومراجعة `reports/` (حسب الجلسة/الإعداد/النظام). لا شيء هنا يضمن ربحًا.
@@ -117,7 +117,8 @@ python -m goldbot run
 - الذهب الفوري ليس له حجم حقيقي: **Volume = عدد الـticks** (يظهر في VWAP وRelative Volume).
 - مواعيد الجلسات ثابتة بتوقيت UTC (لا ضبط تلقائي للتوقيت الصيفي) — عدّلها في `sessions` مرتين في السنة.
 - الشمعة اليومية تبدأ 00:00 UTC (بعض الوسطاء 21:00/22:00).
-- الخطة المجانية لـSiftingIO REST: 10,000 طلب/شهر وعمق تاريخ يقارب شهرًا؛ الإعداد الافتراضي 28 يومًا حتى لا يطلب البوت تاريخًا خارج الباقة.
+- Dukascopy ينشر ملفات ticks تاريخية مجانية بصيغة bi5 بلا مفتاح؛ GOLDNBOY يفكها ويبني OHLCV محليًا، ويتجاهل ساعات الإغلاق ويستخدم SiftingIO كـfallback عند نقص الملفات.
+- الخطة المجانية لـSiftingIO REST: 10,000 طلب/شهر وعمق تاريخ يقارب شهرًا؛ لا تُستخدم إلا عند تعذر المصدر التاريخي الأساسي.
 - في الـBacktest الـSpread ثابت (0.30) ولا يوجد تقويم أخبار تاريخي.
 - استدعاء الأدوات والصور مع Gemini مختبر بخادم وهمي فقط؛ لم أجرّبه على Gemini الحقيقي.
 - `Confidence` في رسالة Telegram هو **Confluence Score** وليس احتمال ربح. الاحتمال يظهر فقط من عينة تاريخية فعلية مع حجمها (n).
@@ -126,7 +127,7 @@ python -m goldbot run
 
 ```
 config/config.yaml        كل الإعدادات (المزوّدات قابلة للاستبدال من هنا)
-goldbot/providers/        siftingio_ws, siftingio_rest, csv_history, synthetic(اختبار فقط)
+goldbot/providers/        swissquote, dukascopy, siftingio, csv_history, synthetic(اختبار فقط)
 goldbot/core/             tick_store, candle_builder, timeframes, market_data, history_store
 goldbot/analysis/         indicators, structure, liquidity, zones, sessions, levels, news, analyzer(MTF)
 goldbot/strategies/       Trend Pullback, Liquidity Sweep, Breakout, Reversal, VWAP

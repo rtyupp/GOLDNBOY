@@ -8,7 +8,13 @@ mode: paper                 # آمن افتراضيًا: تسجيل فقط. غي
 
 providers:                  # كل مزوّد بيانات قابل للاستبدال من هنا
   live: swissquote_public    # مصدر عام مجاني بلا API key؛ يبني شموع M1/M5 محليًا
-  history: siftingio_rest    # التاريخ يُحمّل مرة/عند النقص؛ live لا يحتاج حصة
+  history: dukascopy_free     # تاريخ مجاني بلا مفتاح؛ يرجع إلى SiftingIO عند غياب الملفات
+  dukascopy:
+    url: http://datafeed.dukascopy.com/datafeed
+    instrument: XAUUSD
+    price_scale: 1000
+    workers: 8
+    timeout_sec: 15
   swissquote:
     url: https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAU/USD
     poll_sec: 5

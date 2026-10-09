@@ -31,6 +31,14 @@ def make_live_provider(cfg: Cfg, on_tick, on_state):
 
 def make_history_provider(cfg: Cfg):
     kind = cfg.get("providers.history", "siftingio_rest")
+    if kind in ("dukascopy", "dukascopy_free"):
+        from goldbot.providers.dukascopy import DukascopyHistory, FallbackHistory
+        primary = DukascopyHistory(cfg.section("providers.dukascopy"), cfg.get("symbol", "XAUUSD"))
+        if env("SIFTING_API_KEY"):
+            from goldbot.providers.siftingio_rest import SiftingRestHistory
+            fallback = SiftingRestHistory(cfg.section("providers.siftingio"), env("SIFTING_API_KEY"), cfg.get("symbol", "XAUUSD"))
+            return FallbackHistory(primary, fallback)
+        return primary
     if kind in ("oanda", "oanda_rest") and _oanda_ready():
         from goldbot.providers.oanda import OandaHistory
         return OandaHistory(cfg.section("providers.oanda"), env("OANDA_API_TOKEN"), env("OANDA_ACCOUNT_ID"),
