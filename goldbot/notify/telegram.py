@@ -48,7 +48,16 @@ class Telegram:
         return None
 
     def send_message(self, chat_id, text: str):
-        r = self._call("sendMessage", chat_id=chat_id, text=text[:4000], disable_web_page_preview="true")
+        import json
+        keyboard = {
+            "keyboard": [
+                [{"text": "💰 السعر اللحظي"}, {"text": "📊 حالة النظام"}],
+                [{"text": "📰 الأخبار القادمة"}, {"text": "📈 التحليل الحالي"}],
+                [{"text": "🎯 آخر إعداد"}, {"text": "❓ المساعدة"}]
+            ],
+            "resize_keyboard": True
+        }
+        r = self._call("sendMessage", chat_id=chat_id, text=text[:4000], disable_web_page_preview="true", reply_markup=json.dumps(keyboard))
         self.sent += 1 if r else 0
         return r
 
@@ -116,7 +125,7 @@ def format_signal(plan, strategy: str, session: str, confidence: float, prob_tex
             f"العائد/المخاطرة:\n1:{plan.rr2:.1f}  (الهدف الأول 1:{plan.rr1:.1f})\n\n"
             f"درجة تقاطع الأدلة:\n{confidence:.0f}/100\n\nالاحتمال التاريخي:\n{prob_text}\n\n"
             f"الاستراتيجية:\n{T.STRATEGY.get(strategy, strategy)}\n\nالجلسة:\n{T.SESSION.get(session, session)}\n\nالسبب:\n{reason}\n\n"
-            "⚠️ ليست نصيحة مالية. درجة تقاطع الأدلة ليست احتمال ربح؛ الاحتمال الحقيقي هو الاحتمال التاريخي فقط.")
+            "⚠️ ليست نصيحة مالية. درجة تقاطع الأدلة ليست احتمال ربح؛ الاحتمال الحقيقي هو الاحتمال التاريخي فقط.\n\nby: QUOP9")
 
 
 class CommandBot:
@@ -135,6 +144,17 @@ class CommandBot:
         self._stop = True
 
     def handle_text(self, text: str) -> Optional[str]:
+        mapping = {
+            "💰 السعر اللحظي": "/price",
+            "📊 حالة النظام": "/status",
+            "📰 الأخبار القادمة": "/news",
+            "📈 التحليل الحالي": "/analysis",
+            "🎯 آخر إعداد": "/signal",
+            "❓ المساعدة": "/help"
+        }
+        raw = (text or "").strip()
+        if raw in mapping:
+            text = mapping[raw]
         parts = (text or "").strip().split()
         if not parts or not parts[0].startswith("/"):
             return None
