@@ -7,8 +7,13 @@ symbol: XAUUSD
 mode: paper                 # آمن افتراضيًا: تسجيل فقط. غيّره إلى live بعد التحقق اليدوي من النتائج.
 
 providers:                  # كل مزوّد بيانات قابل للاستبدال من هنا
-  live: oanda_stream        # OANDA Practice أولًا؛ يرجع إلى SiftingIO إذا لم توجد بيانات OANDA
-  history: oanda_rest        # oanda_rest | siftingio_rest | csv | synthetic (للاختبار فقط)
+  live: swissquote_public    # مصدر عام مجاني بلا API key؛ يبني شموع M1/M5 محليًا
+  history: siftingio_rest    # التاريخ يُحمّل مرة/عند النقص؛ live لا يحتاج حصة
+  swissquote:
+    url: https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAU/USD
+    poll_sec: 5
+    reconnect_min_sec: 2
+    reconnect_max_sec: 60
   oanda:
     instrument: XAU_USD
     rest_url: https://api-fxpractice.oanda.com

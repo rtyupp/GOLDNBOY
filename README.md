@@ -3,7 +3,7 @@
 نظام يحلل الذهب لحظيًا ويرسل **فقط** الفرص التي تتفق عليها كل الفلاتر إلى محادثتك الخاصة في تيليجرام (والقناة لاحقًا)، ويقول «لا صفقة» ويشرح السبب في كل الحالات الأخرى.
 
 ```
-SiftingIO WebSocket ─► TickStore (عمر البيانات) ─► CandleBuilder 1m ─► 3m 5m 15m 30m 1H 4H 1D
+Swissquote Public Quotes ─► TickStore (عمر البيانات) ─► CandleBuilder 1m ─► 3m 5m 15m 30m 1H 4H 1D
 History (REST/CSV) ──────────────────────────────► MarketData ─► Indicators (ta) ─► Structure ─► Liquidity
 ─► Supply/Demand ─► Multi-TF ─► 5 Strategies ─► Confluence ─► Historical Probability ─► Risk
 ─► Gemini (الموجود عندك) ─► BUY / SELL / NO TRADE ─► Telegram + Chart ─► TP1/TP2/SL tracking ─► Journal
@@ -106,7 +106,7 @@ python -m goldbot run
 
 - **لم أتصل بخوادم SiftingIO/Telegram/Gemini الحقيقية** (بيئة البناء بلا إنترنت). الـWebSocket والـREST مبنيان على توثيقهم الرسمي ومختبران بخادم وهمي. شغّل `python -m goldbot check` أولًا.
 - مكتبة `ta` تُستخدم فقط بعد توفر 200 شمعة على الأقل؛ في بداية التشغيل تُستخدم الصيغ الداخلية بدون إصدار خطأ أو تعطيل دائم للمكتبة.
-- المصدر اللحظي المفضل هو OANDA Practice عند ضبط `OANDA_ACCOUNT_ID` و`OANDA_API_TOKEN`؛ وإذا لم تُضبط بياناته يرجع النظام تلقائيًا إلى SiftingIO.
+- المصدر اللحظي الافتراضي هو Swissquote Public Quotes، بلا API key أو حساب؛ يبني شموع M1/M5 محليًا من Bid/Ask. التاريخ يبقى من SiftingIO عند الحاجة فقط.
 - Gemini معطّل افتراضيًا حتى لا يعتمد البوت على حصة خارجية؛ طبقة التقاطع والفلاتر وإدارة المخاطر المحلية هي التي تمنع الإشارة الضعيفة.
 - `vectorbt` اختياري (`vectorbt_cross_check`) وغير مجرَّب. الـBacktest الأساسي مكتوب داخليًا ليستخدم **نفس كود التداول الحي**.
 - **نتائج الـBacktest على بياناتك الحقيقية غير معروفة لي.** لا تثق بالاستراتيجيات قبل تشغيلها ومراجعة `reports/` (حسب الجلسة/الإعداد/النظام). لا شيء هنا يضمن ربحًا.

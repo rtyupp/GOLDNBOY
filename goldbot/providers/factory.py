@@ -9,6 +9,9 @@ def _oanda_ready() -> bool:
 
 def make_live_provider(cfg: Cfg, on_tick, on_state):
     kind = cfg.get("providers.live", "siftingio_ws")
+    if kind in ("swissquote", "swissquote_public"):
+        from goldbot.providers.swissquote import SwissquotePublic
+        return SwissquotePublic(cfg.section("providers.swissquote"), cfg.get("symbol", "XAUUSD"), on_tick, on_state)
     if kind in ("oanda", "oanda_stream") and _oanda_ready():
         from goldbot.providers.oanda import OandaStream
         return OandaStream(cfg.section("providers.oanda"), env("OANDA_API_TOKEN"), env("OANDA_ACCOUNT_ID"),
