@@ -1,75 +1,9 @@
 import asyncio, json, time, unittest
 import pandas as pd
-from tests.helpers import FakeWS, FakeConn, cfg
 from goldbot.models import Tick
-from goldbot.providers.siftingio_ws import SiftingWSProvider, parse_tick
 from goldbot.core.tick_store import TickStore
 from goldbot.core.candle_builder import CandleBuilder
 from goldbot.core.timeframes import resample_ohlcv, closed_only
-
-
-def tickmsg(t, b=2650.0, a=2650.3, p=2650.15, s="XAUUSD"):
-    return {"f": "tick", "class": "com", "s": s, "p": p, "b": b, "a": a, "t": t}
-
-
-class TestParse(unittest.TestCase):
-    def test_ok(self):
-        t = parse_tick(tickmsg(1000), "XAUUSD", 2000)
-        self.assertEqual((t.bid, t.ask, t.ts_ms), (2650.0, 2650.3, 1000))
-        self.assertAlmostEqual(t.spread, 0.3)
-
-    def test_wrong_symbol_and_junk(self):
-        self.assertIsNone(parse_tick(tickmsg(1, s="XAGUSD"), "XAUUSD", 1))
-        self.assertIsNone(parse_tick({"f": "pong"}, "XAUUSD", 1))
-        self.assertIsNone(parse_tick({"f": "tick", "s": "XAUUSD", "t": 1}, "XAUUSD", 1))
-
-    def test_crossed_quote_is_not_a_quote(self):
-        t = parse_tick(tickmsg(1, b=2651, a=2650), "XAUUSD", 1)
-        self.assertFalse(t.has_quote)
-
-
-class TestWS(unittest.IsolatedAsyncioTestCase):
-    async def test_subscribe_ping_tick_and_reconnect(self):
-        got, states, conns = [], [], []
-        now_ms = int(time.time() * 1000)
-        frames1 = [{"f": "ack", "op": "auth", "tier": "free", "max_conn": 1, "max_subs": 5}, tickmsg(now_ms), "not json"]
-        frames2 = [tickmsg(now_ms + 1000)]
-        seq = [FakeWS(frames1), FakeWS(frames2)]
-
-        def connect(url):
-            conns.append(url)
-            if not seq:
-                raise ConnectionError("done")
-            return FakeConn(seq.pop(0))
-        c = {"ping_interval_sec": 0.01, "reconnect_min_sec": 0.01, "reconnect_max_sec": 0.02}
-        p = SiftingWSProvider(c, "KEY123", "XAUUSD", got.append, states.append, connect=connect)
-        task = asyncio.create_task(p.run())
-        for _ in range(200):
-            await asyncio.sleep(0.02)
-            if len(got) >= 2:
-                break
-        p.stop()
-        task.cancel()
-        self.assertGreaterEqual(len(got), 2)                     # reconnected automatically
-        self.assertIn("key=KEY123", conns[0])
-        self.assertGreaterEqual(len(conns), 2)
-        self.assertTrue(any(s is False for s in states))         # disconnect reported
-        self.assertTrue(any(s is True for s in states))
-
-    async def test_subscribe_frame_and_pings(self):
-        ws = FakeWS([], close_after=False)
-        p = SiftingWSProvider({"ping_interval_sec": 0.01}, "K", "XAUUSD", lambda t: None, connect=lambda u: FakeConn(ws))
-        t = asyncio.create_task(p._session(ws))
-        await asyncio.sleep(0.08)
-        p.stop()
-        t.cancel()
-        self.assertEqual(ws.sent[0], {"op": "subscribe", "product": "com", "symbols": ["XAUUSD"]})
-        self.assertTrue(any(m == {"op": "ping"} for m in ws.sent[1:]))
-
-    async def test_auth_error_flagged(self):
-        p = SiftingWSProvider({}, "bad", "XAUUSD", lambda t: None)
-        p._handle(json.dumps({"f": "error", "code": "auth_failed", "message": "x"}))
-        self.assertTrue(p.fatal_auth)
 
 
 class TestFreshness(unittest.TestCase):

@@ -16,7 +16,7 @@ History (REST/CSV) ────────────────────�
 ```bash
 pip install -r requirements.txt
 cp .env.example .env        # املأ المفاتيح، ثم:  export $(grep -v '^#' .env | xargs)
-python -m goldbot check     # يتأكد من SiftingIO + Telegram + Gemini (والنتائج بالعربي)
+python -m goldbot check     # يتأكد من Swissquote + Dukascopy + أخبار Forex Factory + Telegram (والنتائج بالعربي)
 python -m goldbot backtest --tf all --days 60 --store   # يبني سجل الاحتمالات التاريخية (مرة أولى)
 python -m goldbot run
 ```
@@ -83,7 +83,7 @@ python -m goldbot run
 
 | المجال | ما تم التحقق منه |
 |---|---|
-| WebSocket | الـsubscribe حسب بروتوكول SiftingIO، Ping دوري، إعادة اتصال تلقائية، رفض الـticks القديمة/المتأخرة/المكررة، خطأ المصادقة |
+| السعر اللحظي | استعلام Swissquote العام كل 5 ثوانٍ، backoff عند الفشل، رفض الـticks القديمة/المكررة (لا تُحتسب اللقطة المتطابقة مرتين)، بناء شموع M1/M5 محليًا |
 | الشموع | بناء 1m من الـticks، إغلاق الشمعة، تجاهل tick متأخر، **عدم إرجاع شمعة قيد التكوّن** |
 | المؤشرات | سببية (لا تستخدم المستقبل)، RSI/ATR/VWAP وكل الأعمدة المطلوبة |
 | الهيكل/السيولة | HH/HL/LH/LL، BOS، CHoCH، swings مؤكدة فقط، Sweep ≠ Breakout، Equal Highs |
@@ -104,9 +104,9 @@ python -m goldbot run
 
 ## 4) ما لم يُختبر ولا أستطيع ادّعاءه
 
-- **لم أتصل بخوادم SiftingIO/Telegram/Gemini الحقيقية** (بيئة البناء بلا إنترنت). الـWebSocket والـREST مبنيان على توثيقهم الرسمي ومختبران بخادم وهمي. شغّل `python -m goldbot check` أولًا.
+- **لم أتصل بخوادم Swissquote/Dukascopy/Telegram الحقيقية** (بيئة البناء بلا إنترنت). المنطق مختبر بخوادم وهمية. شغّل `python -m goldbot check` أولًا على جهازك أو على Render.
 - مكتبة `ta` تُستخدم فقط بعد توفر 200 شمعة على الأقل؛ في بداية التشغيل تُستخدم الصيغ الداخلية بدون إصدار خطأ أو تعطيل دائم للمكتبة.
-- المصدر اللحظي الافتراضي هو Swissquote Public Quotes، بلا API key أو حساب؛ يبني شموع M1/M5 محليًا من Bid/Ask. المصدر التاريخي الحالي SiftingIO المجاني المتوافق مع التاريخ الحالي، وDukascopy احتياطي للملفات القديمة.
+- المصدر اللحظي: Swissquote Public Quotes، بلا API key أو حساب؛ يبني شموع M1/M5 محليًا من Bid/Ask. المصدر التاريخي: Dukascopy المجاني بلا مفتاح (شهور الروابط تبدأ من 00 وقد صُحّح ذلك). لا يوجد أي مصدر مدفوع أو يحتاج مفتاح.
 - Gemini معطّل افتراضيًا حتى لا يعتمد البوت على حصة خارجية؛ طبقة التقاطع والفلاتر وإدارة المخاطر المحلية هي التي تمنع الإشارة الضعيفة.
 - `vectorbt` اختياري (`vectorbt_cross_check`) وغير مجرَّب. الـBacktest الأساسي مكتوب داخليًا ليستخدم **نفس كود التداول الحي**.
 - **نتائج الـBacktest على بياناتك الحقيقية غير معروفة لي.** لا تثق بالاستراتيجيات قبل تشغيلها ومراجعة `reports/` (حسب الجلسة/الإعداد/النظام). لا شيء هنا يضمن ربحًا.
@@ -117,8 +117,8 @@ python -m goldbot run
 - الذهب الفوري ليس له حجم حقيقي: **Volume = عدد الـticks** (يظهر في VWAP وRelative Volume).
 - مواعيد الجلسات ثابتة بتوقيت UTC (لا ضبط تلقائي للتوقيت الصيفي) — عدّلها في `sessions` مرتين في السنة.
 - الشمعة اليومية تبدأ 00:00 UTC (بعض الوسطاء 21:00/22:00).
-- Dukascopy ينشر ملفات ticks تاريخية مجانية بصيغة bi5 بلا مفتاح؛ GOLDNBOY يفكها ويبني OHLCV محليًا، ويتجاهل ساعات الإغلاق ويستخدم SiftingIO كـfallback عند نقص الملفات.
-- الخطة المجانية لـSiftingIO REST: 10,000 طلب/شهر وعمق تاريخ يقارب شهرًا؛ لا تُستخدم إلا عند تعذر المصدر التاريخي الأساسي.
+- Dukascopy ينشر ملفات ticks تاريخية مجانية بصيغة bi5 بلا مفتاح؛ GOLDNBOY يفكها ويبني OHLCV محليًا، ويتجاهل ساعات الإغلاق والساعة الجارية. الفجوة بين آخر ساعة منشورة وبداية الشموع الحية (حتى نحو ساعة) تُملأ تدريجيًا من الشموع الحية.
+- على Render المجاني لا يوجد قرص دائم: يُعاد تنزيل التاريخ (مجانًا) وبناء السجل الذاتي عند كل إعادة تشغيل. الخدمة تنام بعد 15 دقيقة بلا طلبات، لذلك يوجد ping ذاتي كل 10 دقائق، ويُفضّل إضافة UptimeRobot على /health.
 - في الـBacktest الـSpread ثابت (0.30) ولا يوجد تقويم أخبار تاريخي.
 - استدعاء الأدوات والصور مع Gemini مختبر بخادم وهمي فقط؛ لم أجرّبه على Gemini الحقيقي.
 - `Confidence` في رسالة Telegram هو **Confluence Score** وليس احتمال ربح. الاحتمال يظهر فقط من عينة تاريخية فعلية مع حجمها (n).
@@ -127,7 +127,7 @@ python -m goldbot run
 
 ```
 config/config.yaml        كل الإعدادات (المزوّدات قابلة للاستبدال من هنا)
-goldbot/providers/        swissquote, dukascopy, siftingio, csv_history, synthetic(اختبار فقط)
+goldbot/providers/        swissquote, dukascopy, oanda (اختياري), csv_history, synthetic(اختبار فقط)
 goldbot/core/             tick_store, candle_builder, timeframes, market_data, history_store
 goldbot/analysis/         indicators, structure, liquidity, zones, sessions, levels, news, analyzer(MTF)
 goldbot/strategies/       Trend Pullback, Liquidity Sweep, Breakout, Reversal, VWAP

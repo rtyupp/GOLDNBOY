@@ -1,20 +1,21 @@
 # ============================================================================
 #  إعدادات بوت الذهب XAU/USD.  المفاتيح السرية لا تُكتب هنا، بل في متغيرات البيئة:
-#  SIFTING_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_ADMIN_IDS  (+ GEMINI_API_KEY)
-#  TELEGRAM_CHANNEL_ID اختياري ويُستخدم لاحقًا عند تفعيل القناة.
+#  TELEGRAM_BOT_TOKEN, TELEGRAM_ADMIN_IDS   (فقط! كل مصادر البيانات مجانية وبلا مفاتيح)
+#  اختياري: TELEGRAM_CHANNEL_ID, BOT_MODE=live|paper, GEMINI_API_KEY (فقط إن فعّلت ai.enabled)
 # ============================================================================
 symbol: XAUUSD
-mode: paper                 # آمن افتراضيًا: تسجيل فقط. غيّره إلى live بعد التحقق اليدوي من النتائج.
+mode: paper                 # آمن افتراضيًا: تسجيل فقط (لا ترسل إشارات). للتفعيل ضع متغير البيئة BOT_MODE=live أو غيّره هنا.
 
 providers:                  # كل مزوّد بيانات قابل للاستبدال من هنا
   live: swissquote_public    # مصدر عام مجاني بلا API key؛ يبني شموع M1/M5 محليًا
-  history: siftingio_rest     # تاريخ مجاني حالي؛ Dukascopy احتياطي للملفات القديمة
+  history: dukascopy         # تاريخ مجاني بلا مفتاح (ملفات ticks ساعية تتحول إلى شموع 1m)
   dukascopy:
-    url: http://datafeed.dukascopy.com/datafeed
+    url: https://datafeed.dukascopy.com/datafeed    # الشهر في الرابط يبدأ من 00 (يعالجه الكود)
     instrument: XAUUSD
     price_scale: 1000
-    workers: 8
+    workers: 6
     timeout_sec: 15
+    retries: 3
   swissquote:
     url: https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAU/USD
     poll_sec: 5
@@ -28,14 +29,6 @@ providers:                  # كل مزوّد بيانات قابل للاستب
     oanda_max_calls: 80
     oanda_reconnect_min_sec: 2
     oanda_reconnect_max_sec: 60
-  siftingio:
-    ws_url: wss://stream.sifting.io/ws/v1
-    rest_url: https://api.sifting.io
-    product: com            # السلع (الذهب)
-    ping_interval_sec: 30   # الخادم يقطع الاتصال الخامل بعد 90 ثانية
-    silence_reconnect_sec: 120
-    reconnect_min_sec: 1
-    reconnect_max_sec: 60
   csv: {csv_path: data/xauusd_1m.csv}
 
 telegram:
@@ -43,9 +36,12 @@ telegram:
   chart_tf: 5m
   chart_bars: 100
 
+render:
+  keepalive_min: 10         # على Render المجاني: ping ذاتي كل N دقيقة حتى لا ينام الخادم (يعمل تلقائيًا مع RENDER_EXTERNAL_URL)
+
 data:
   max_tick_age_sec: 20      # أقدم من هذا = لا صفقة
-  history_days: 28          # الباقة المجانية تغطي نحو شهر؛ 28 يومًا كافٍ للفريمات العليا
+  history_days: 30          # Dukascopy مجاني وعميق؛ 30 يومًا كافٍ للفريمات العليا
   min_history_rows: 14400   # نحو 60 شمعة 4H؛ أقل من ذلك لا يبدأ التحليل
   history_retry_sec: 300
   cache_dir: data/cache
@@ -130,7 +126,7 @@ ml:
 
 bootstrap:                  # تهيئة ذاتية: Backtest ثم تدريب ML في عملية فرعية منخفضة الأولوية
   enabled: true
-  days: 28                  # متوافق مع عمق التاريخ في الباقة المجانية
+  days: 60                  # تاريخ Dukascopy عميق ومجاني؛ كلما زادت الأيام زادت عينة الاحتمال التاريخي
   tfs: [5m, 15m]            # أضف 1m إن كان عندك ذاكرة ومعالج كافيان (أبطأ بكثير)
   min_trades: 150           # أقل من هذا في السجل ← يُعاد البناء تلقائيًا
   refresh_days: 7           # تحديث السجل وإعادة تدريب ML كل أسبوع
@@ -139,7 +135,7 @@ bootstrap:                  # تهيئة ذاتية: Backtest ثم تدريب ML
 
 backtest:
   spread: 0.30
-  history_days: 28
+  history_days: 60
   steps: {1m: 5, 5m: 1, 15m: 1}
   report_dir: reports
 

@@ -23,7 +23,11 @@ class Telegram:
     def _call(self, method: str, **kw):
         url = API.format(token=self.token, method=method)
         files = kw.pop("files", None)
-        timeout = kw.pop("timeout", 30)
+        http_timeout = kw.pop("_http_timeout", None)
+        if http_timeout is None:
+            timeout = kw.pop("timeout", 30)          # ordinary call: "timeout" is the HTTP timeout
+        else:
+            timeout = http_timeout                   # long polling: "timeout" stays a Telegram API parameter
         for attempt in range(3):
             try:
                 r = self.s.post(url, data=kw, files=files, timeout=timeout)
@@ -72,8 +76,15 @@ class Telegram:
             return None
 
     def get_updates(self, offset: Optional[int], timeout: int = 25):
-        return self._call("getUpdates", offset=offset if offset is not None else "", timeout=timeout,
-                          allowed_updates='["message"]') or []
+        # real long polling: Telegram holds the request up to `timeout` s; the HTTP timeout must be longer
+        kw = {"timeout": timeout, "_http_timeout": timeout + 15, "allowed_updates": '["message"]'}
+        if offset is not None:
+            kw["offset"] = offset
+        return self._call("getUpdates", **kw) or []
+
+    def delete_webhook(self) -> bool:
+        """A registered webhook makes getUpdates fail with 409; clear it once at startup."""
+        return self._call("deleteWebhook", drop_pending_updates="false", timeout=15) is not None
 
     # ---- وجهة الإشارات (خاص / قناة / الاثنان)
     def targets(self) -> list:
@@ -211,21 +222,29 @@ class CommandBot:
             log.exception("فشل معالجة رسالة")
 
     async def run(self):
+        dw = getattr(self.tg, "delete_webhook", None)
+        if dw:
+            await asyncio.to_thread(dw)
+        conflicts = 0
         while not self._stop:
-            err_before = getattr(self.tg, "last_error", None)
+            self.tg.last_error = None
             ups = await asyncio.to_thread(self.tg.get_updates, self.offset, 25)
             le = getattr(self.tg, "last_error", None) or ""
             if "getUpdates" in le and "Conflict" in le:
-                # Telegram permits only one long-polling consumer per bot
-                # token. Do not spin and flood logs while another instance
-                # still owns the polling lease.
-                log.error("تعارض getUpdates: سيتم تعطيل استقبال الأوامر لهذه النسخة")
-                return
+                # Only one long-polling consumer per token is allowed. On Render the OLD instance keeps
+                # running for a short while during a deploy -> wait and retry instead of giving up forever.
+                conflicts += 1
+                wait = min(60, 10 * conflicts)
+                log.warning("تعارض getUpdates (نسخة أخرى تستقبل الأوامر؛ غالبًا نشر جديد على Render) — إعادة المحاولة بعد %ds", wait)
+                await asyncio.sleep(wait)
+                continue
+            conflicts = 0
             for u in ups:
                 self.offset = u["update_id"] + 1
                 t = asyncio.create_task(self._safe(u))        # كل رسالة في مهمة مستقلة: الرد البطيء لا يوقف الاستقبال
                 self._tasks.add(t)
                 t.add_done_callback(self._tasks.discard)
-            if not ups:
-                le = getattr(self.tg, "last_error", None)
-                await asyncio.sleep(3 if le and le != err_before else 0.5)
+            if le:                                            # network/API error: back off so we never spin
+                await asyncio.sleep(3)
+            elif not ups:
+                await asyncio.sleep(0.2)

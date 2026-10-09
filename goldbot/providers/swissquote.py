@@ -37,6 +37,8 @@ class SwissquotePublic(LiveProvider):
         self.clock = clock
         self._stop = threading.Event()
         self.last_error: Optional[str] = None
+        self._last_key: tuple | None = None
+        self.skipped_duplicates = 0
 
     def stop(self):
         self._stop.set()
@@ -76,7 +78,12 @@ class SwissquotePublic(LiveProvider):
         t = self.parse(r.json(), int(self.clock() * 1000))
         if t is None:
             raise RuntimeError("Swissquote returned no valid XAU/USD quote")
-        self.on_tick(t)
+        key = (t.ts_ms, round(t.bid, 3), round(t.ask, 3))
+        if key == self._last_key:               # unchanged snapshot: do not inflate candle tick-volume
+            self.skipped_duplicates += 1
+        else:
+            self._last_key = key
+            self.on_tick(t)
         self.on_state(True)
 
     async def run(self) -> None:

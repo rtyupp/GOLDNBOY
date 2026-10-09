@@ -1,14 +1,15 @@
-"""Free Dukascopy historical tick feed, converted to OHLCV bars.
+"""Free Dukascopy historical tick feed, converted to OHLCV bars (no API key, no account).
 
-Dukascopy publishes compressed hourly .bi5 files without an API key. Missing
-hours (weekends, unavailable dates, or upstream errors) are ignored; the
-factory can wrap this provider with SiftingIO as a fallback.
+Dukascopy publishes compressed hourly .bi5 files. IMPORTANT: in the URL the month is ZERO-BASED
+(January = 00 ... December = 11). Missing hours (weekends, the still-open current hour, upstream
+errors) are skipped; a missing hour is never treated as success by FallbackHistory.
 """
 from __future__ import annotations
 import io
 import lzma
 import logging
 import struct
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
@@ -22,12 +23,23 @@ log = logging.getLogger("dukascopy")
 
 
 class DukascopyHistory(HistoryProvider):
-    def __init__(self, cfg: dict, symbol: str = "XAUUSD"):
-        self.base = cfg.get("url", "http://datafeed.dukascopy.com/datafeed").rstrip("/")
+    def __init__(self, cfg: dict, symbol: str = "XAUUSD", session: requests.Session | None = None):
+        self.base = cfg.get("url", "https://datafeed.dukascopy.com/datafeed").rstrip("/")
+        # second attempt on the other scheme if the first one fails at the network level
+        self.alt_base = self.base.replace("https://", "http://", 1) if self.base.startswith("https://") \
+            else self.base.replace("http://", "https://", 1)
         self.symbol = cfg.get("instrument", symbol.replace("/", "").upper())
         self.scale = float(cfg.get("price_scale", 1000))
-        self.workers = max(1, min(12, int(cfg.get("workers", 8))))
+        self.workers = max(1, min(12, int(cfg.get("workers", 6))))
         self.timeout = float(cfg.get("timeout_sec", 15))
+        self.retries = max(1, int(cfg.get("retries", 3)))
+        self.s = session or requests.Session()
+        self.s.headers.setdefault("User-Agent", "Mozilla/5.0 goldbot")
+
+    def url_for(self, hour: pd.Timestamp, base: str | None = None) -> str:
+        # Dukascopy month folders are 00..11 (zero-based) - month-1 is required
+        return (f"{base or self.base}/{self.symbol}/{hour.year:04d}/{hour.month - 1:02d}/"
+                f"{hour.day:02d}/{hour.hour:02d}h_ticks.bi5")
 
     @staticmethod
     def decode_ticks(blob: bytes, hour: pd.Timestamp, scale: float = 1000) -> pd.DataFrame:
@@ -45,15 +57,28 @@ class DukascopyHistory(HistoryProvider):
         return pd.DataFrame(rows, columns=["time", "close", "volume"]).set_index("time").sort_index()
 
     def _hour(self, hour: pd.Timestamp):
-        url = f"{self.base}/{self.symbol}/{hour.year:04d}/{hour.month:02d}/{hour.day:02d}/{hour.hour:02d}h_ticks.bi5"
-        try:
-            r = requests.get(url, timeout=self.timeout)
-            if r.status_code != 200 or not r.content:
-                return pd.DataFrame(columns=["close", "volume"])
-            return self.decode_ticks(r.content, hour, self.scale)
-        except (requests.RequestException, lzma.LZMAError, struct.error, ValueError) as e:
-            log.debug("Dukascopy hour unavailable %s: %s", hour, e)
-            return pd.DataFrame(columns=["close", "volume"])
+        empty = pd.DataFrame(columns=["close", "volume"])
+        for base in (self.base, self.alt_base):
+            for attempt in range(self.retries):
+                try:
+                    r = self.s.get(self.url_for(hour, base), timeout=self.timeout)
+                except requests.RequestException as e:
+                    log.debug("Dukascopy network error %s (%s): %s", hour, base, e)
+                    time.sleep(0.4 * (attempt + 1))
+                    continue
+                if r.status_code in (404, 403):          # hour not published (weekend / still open / not yet available)
+                    return empty
+                if r.status_code == 200:
+                    if not r.content:
+                        return empty                      # market closed: empty file
+                    try:
+                        return self.decode_ticks(r.content, hour, self.scale)
+                    except (lzma.LZMAError, struct.error, ValueError) as e:
+                        log.debug("Dukascopy corrupt hour %s: %s", hour, e)
+                        return empty
+                time.sleep(0.4 * (attempt + 1))           # 429 / 5xx: back off and retry
+            # network-level failure on this scheme -> try the other one
+        return empty
 
     def fetch(self, interval: str, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
         start = pd.Timestamp(start)

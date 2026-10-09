@@ -282,6 +282,25 @@ class BotApp:
         async with srv:
             await srv.serve_forever()
 
+    # ------------------------------------------------------------------ keep-alive (Render free web service)
+    async def keepalive(self):
+        """Render's free web service sleeps after ~15 min without inbound HTTP, which would kill the live feed.
+        Pinging our own public URL every few minutes counts as inbound traffic. RENDER_EXTERNAL_URL is set by Render
+        automatically (or set KEEPALIVE_URL yourself, e.g. when you also use UptimeRobot, which is even more reliable)."""
+        base = env("KEEPALIVE_URL") or env("RENDER_EXTERNAL_URL")
+        if not base:
+            return
+        import requests
+        url = base.rstrip("/") + "/health"
+        every = max(60.0, float(self.cfg.get("render.keepalive_min", 10)) * 60)
+        log.info("Keep-alive مفعّل: %s كل %.0f دقيقة", url, every / 60)
+        while not self._stop:
+            await asyncio.sleep(every)
+            try:
+                await asyncio.to_thread(requests.get, url, timeout=20)
+            except Exception as e:
+                log.debug("فشل ping الـ keep-alive: %s", e)
+
     # ------------------------------------------------------------------ run
     async def _supervise(self, name: str, factory):
         """يعيد تشغيل المهمة تلقائيًا إن انهارت (انهيار تيليجرام مثلًا لا يوقف السعر اللحظي)."""
@@ -307,7 +326,8 @@ class BotApp:
         else:
             self.live = self.live_factory(self.ticks.on_tick, self.ticks.set_connected)
         jobs = [("السعر اللحظي", self.live.run), ("البيانات التاريخية", self.load_history), ("التحليل", self.analysis_loop),
-                ("الإرسال", self.sender), ("الصيانة والأخبار", self.housekeeping), ("فحص الصحة", self.health_server)]
+                ("الإرسال", self.sender), ("الصيانة والأخبار", self.housekeeping), ("فحص الصحة", self.health_server),
+                ("keep-alive", self.keepalive)]
         if self.cmd:
             jobs.append(("أوامر تيليجرام", self.cmd.run))
         if self.tg and self.cfg.get("mode") != "paper":

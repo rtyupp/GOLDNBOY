@@ -23,6 +23,16 @@ def build_app(cfg):
     return BotApp(cfg, tg=tg, history_provider=make_history_provider(cfg))
 
 
+def apply_env_overrides(cfg):
+    """BOT_MODE=live|paper from the environment (Render dashboard) overrides config.yaml without editing files."""
+    m = (env("BOT_MODE") or "").strip().lower()
+    if m in ("live", "paper"):
+        cfg.set("mode", m)
+    t = (env("SIGNAL_TARGET") or "").strip().lower()
+    if t in ("private", "channel", "both"):
+        cfg.set("telegram.signal_target", t)
+
+
 def cmd_run(cfg):
     app = build_app(cfg)
 
@@ -76,25 +86,42 @@ def cmd_train_ml(cfg):
 def cmd_check(cfg):
     import requests
     ok = lambda v: "موجود ✅" if v else "ناقص ❌"
-    print("SIFTING_API_KEY      :", ok(env("SIFTING_API_KEY")))
+    print("وضع التشغيل          :", cfg.get("mode"), "(غيّره بالمتغير BOT_MODE=live عند الجاهزية)")
     print("TELEGRAM_BOT_TOKEN   :", ok(env("TELEGRAM_BOT_TOKEN")))
     print("TELEGRAM_ADMIN_IDS   :", env("TELEGRAM_ADMIN_IDS") or "ناقص ❌  (اكتب /id للبوت ليعطيك رقمك)")
     print("وجهة الإشارات        :", cfg.get("telegram.signal_target", "private"), "| TELEGRAM_CHANNEL_ID:", env("TELEGRAM_CHANNEL_ID") or "غير مستخدم الآن")
-    model = env("GEMINI_MODEL") or cfg.get("ai.model") or "gemini-3.8-flash"
-    print("Gemini               :", ("دالتك الحالية: " + cfg.get("ai.adapter")) if cfg.get("ai.adapter")
-          else f"REST — النموذج {model} — GEMINI_API_KEY {ok(env('GEMINI_API_KEY'))}")
-    if not cfg.get("ai.adapter") and "2.5" in model:
-        print("  ⚠️ نماذج Gemini 2.5 مجدولة للإيقاف في 16 أكتوبر 2026؛ حدّد ai.fallback_model أو نموذجًا أحدث من توثيق Google.")
+    if cfg.get("ai.enabled"):
+        model = env("GEMINI_MODEL") or cfg.get("ai.model") or "gemini-3.8-flash"
+        print("Gemini               :", (("دالتك الحالية: " + cfg.get("ai.adapter")) if cfg.get("ai.adapter")
+              else f"REST — النموذج {model} — GEMINI_API_KEY {ok(env('GEMINI_API_KEY'))}"))
+    else:
+        print("Gemini               : معطّل (ai.enabled=false) — لا حاجة لمفتاح")
     if env("TELEGRAM_BOT_TOKEN"):
-        r = requests.get(f"https://api.telegram.org/bot{env('TELEGRAM_BOT_TOKEN')}/getMe", timeout=15).json()
-        print("اتصال تيليجرام       :", ("نجح ✅ @" + r["result"]["username"]) if r.get("ok") else r)
-    if env("SIFTING_API_KEY"):
+        try:
+            r = requests.get(f"https://api.telegram.org/bot{env('TELEGRAM_BOT_TOKEN')}/getMe", timeout=15).json()
+            print("اتصال تيليجرام       :", ("نجح ✅ @" + r["result"]["username"]) if r.get("ok") else r)
+        except Exception as e:
+            print("اتصال تيليجرام       : فشل ❌", type(e).__name__)
+    # ---- المصادر المجانية (بدون مفاتيح)
+    try:
+        from goldbot.providers.swissquote import SwissquotePublic
+        sq = SwissquotePublic(cfg.section("providers.swissquote"), cfg.get("symbol", "XAUUSD"), lambda t: None)
+        r = requests.get(sq.url, timeout=10)
+        t = SwissquotePublic.parse(r.json(), int(pd.Timestamp.now(tz="UTC").timestamp() * 1000))
+        print("Swissquote (لحظي)    :", f"نجح ✅ bid={t.bid:.2f} ask={t.ask:.2f} spread={t.spread:.2f}" if t else "لا يوجد سعر صالح (السوق مغلق؟)")
+    except Exception as e:
+        print("Swissquote (لحظي)    : فشل ❌", type(e).__name__, e)
+    try:
         from goldbot.providers.factory import make_history_provider
-        end = pd.Timestamp.now(tz="UTC")
-        df = make_history_provider(cfg).fetch("1m", end - pd.Timedelta(hours=3), end)
-        print("SiftingIO REST       :", f"نجح ✅ ({len(df)} شمعة)" if len(df) else "لا توجد شموع (السوق مغلق؟)")
-    from goldbot.analysis.news import NewsFilter
-    print("ملف الأخبار          :", len(NewsFilter(cfg.get("news.events_file")).events), "حدث (املأ data/events.csv قبل التشغيل الحقيقي)")
+        end = pd.Timestamp.now(tz="UTC").floor("h") - pd.Timedelta(hours=1)
+        df = make_history_provider(cfg).fetch("1m", end - pd.Timedelta(hours=48), end)
+        print("Dukascopy (تاريخي)   :", f"نجح ✅ ({len(df)} شمعة 1m خلال آخر 48 ساعة)" if len(df) else "لا توجد شموع (تحقق من الشبكة، أو السوق مغلق/عطلة)")
+    except Exception as e:
+        print("Dukascopy (تاريخي)   : فشل ❌", type(e).__name__, e)
+    from goldbot.analysis.news import NewsFilter, fetch_ff, FEED_HOSTS
+    res = fetch_ff(requests.Session(), cfg.get("news.feed_hosts", FEED_HOSTS), tuple(cfg.get("news.currencies", ["USD"])))
+    print("تقويم الأخبار (FF)   :", f"نجح ✅ ({len(res.df)} حدث مهم)" if res.df is not None else "فشل ❌ " + "، ".join(res.errors))
+    print("ملف الأخبار اليدوي   :", len(NewsFilter(cfg.get("news.events_file")).events), "حدث")
 
 
 def main(argv=None):
@@ -107,6 +134,7 @@ def main(argv=None):
     ap.add_argument("--store", action="store_true", help="حفظ صفقات الـ Backtest كسجل للاحتمال التاريخي")
     a = ap.parse_args(argv)
     cfg = load_config(a.config)
+    apply_env_overrides(cfg)
     setup_logging(cfg.get("log_level", "INFO"), cfg.get("paths.log_dir", "logs"))
     {"run": lambda: cmd_run(cfg), "backtest": lambda: cmd_backtest(cfg, a),
      "train-ml": lambda: cmd_train_ml(cfg), "check": lambda: cmd_check(cfg)}[a.command]()

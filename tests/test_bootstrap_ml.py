@@ -124,7 +124,7 @@ class TestRealSubprocessBootstrap(unittest.IsolatedAsyncioTestCase):
         d = tempfile.mkdtemp()
         conf = f"""
 symbol: XAUUSD
-providers: {{live: siftingio_ws, history: synthetic, synthetic: {{days: 30, end: now, seed: 5}}}}
+providers: {{live: swissquote_public, history: synthetic, synthetic: {{days: 30, end: now, seed: 5}}}}
 paths: {{journal: {d}/j.sqlite, log_dir: {d}/logs}}
 data: {{cache_dir: {d}/cache, history_days: 30}}
 backtest: {{report_dir: {d}/reports, steps: {{5m: 1, 15m: 1}}}}

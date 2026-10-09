@@ -1,22 +1,22 @@
-# Render Blueprint. Free web services SLEEP after 15 min without inbound HTTP -> the WebSocket feed would die.
-# Use a paid instance (starter) or any VPS for 24/7 operation.
+# Render Blueprint — الخطة المجانية (free): لا تكلفة.
+# ملاحظات مهمة:
+#  - الخدمة المجانية تنام بعد 15 دقيقة بلا طلبات HTTP؛ البوت يرسل ping ذاتيًا كل 10 دقائق (RENDER_EXTERNAL_URL).
+#    للأمان الإضافي أضف مراقبًا مجانيًا (UptimeRobot / cron-job.org) على: https://<اسم-خدمتك>.onrender.com/health كل 5 دقائق.
+#  - لا يوجد قرص دائم في الخطة المجانية: عند كل إعادة تشغيل يُعاد تنزيل التاريخ (مجانًا من Dukascopy) وإعادة بناء السجل الذاتي تلقائيًا.
+#    (للاحتفاظ بالسجل بين النشرات استخدم plan: starter مع القسم disk أدناه.)
 services:
-  - type: web                # a worker (type: worker) also works and needs no health check
+  - type: web
     name: gold-signals-bot
     runtime: docker
-    plan: starter
+    plan: free
     healthCheckPath: /health
     autoDeploy: true
-    disk:                    # keeps the journal / history cache across deploys (paid plans only)
-      name: bot-data
-      mountPath: /app/data
-      sizeGB: 1
+    # disk:                  # خطة مدفوعة فقط (starter+)
+    #   name: bot-data
+    #   mountPath: /app/data
+    #   sizeGB: 1
     envVars:
-      - {key: SIFTING_API_KEY, sync: false}
       - {key: TELEGRAM_BOT_TOKEN, sync: false}
-      - {key: TELEGRAM_CHANNEL_ID, sync: false}   # اختياري (للقناة لاحقًا)
       - {key: TELEGRAM_ADMIN_IDS, sync: false}
-      - {key: GEMINI_API_KEY, sync: false}
-      - {key: GEMINI_MODEL, sync: false}
-      - {key: GEMINI_FALLBACK_MODEL, sync: false}
-      - {key: EVENTS_CSV_URL, sync: false}
+      - {key: TELEGRAM_CHANNEL_ID, sync: false}   # اختياري
+      - {key: BOT_MODE, value: live}               # غيّره إلى paper للتجربة بدون إرسال
