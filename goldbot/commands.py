@@ -30,6 +30,9 @@ def build_handlers(app) -> dict:
             hist = f"خطأ: {app.md.history_error}"
         else:
             hist = f"قيد التحميل ({app.md.history_rows}/{min_rows})"
+            prog = getattr(app.history_provider, "progress", None)
+            if prog and prog[1]:
+                hist += f" — تنزيل Dukascopy: {prog[0]}/{prog[1]} ساعة"
         return "\n".join([
             "حالة النظام",
             f"الاتصال اللحظي: {'متصل ✅' if t.connected else 'منقطع ❌'}   عدد التحديثات: {t.count}",

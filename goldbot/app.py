@@ -8,7 +8,7 @@ import pandas as pd
 from goldbot.ai.agents import build_card
 from goldbot.ai.assistant import Assistant
 from goldbot.ai.gemini_layer import GeminiLayer
-from goldbot.analysis.news import NewsFilter, fetch_ff, FEED_HOSTS
+from goldbot.analysis.news import NewsFilter, fetch_ff, FEED_HOSTS, builtin_events
 from goldbot.analysis.news_ai import fetch_via_gemini
 from goldbot.bootstrap import Bootstrapper
 from goldbot.commands import build_handlers
@@ -143,6 +143,12 @@ class BotApp:
                         log.warning("بحث Gemini لم يُرجع أحداثًا صالحة")
                 except Exception as e:
                     log.warning("فشل مصدر الأخبار الاحتياطي (Gemini): %s", e)
+        if not ok and self.cfg.get("news.builtin_fallback", True):
+            now = pd.Timestamp.now(tz="UTC")
+            stale = self.news.last_ok is None or (now - self.news.last_ok) > pd.Timedelta(hours=float(self.cfg.get("news.max_age_hours", 36)) / 2)
+            if stale:      # لا كاش حديث ولا تقويم حي: استخدم NFP/FOMC المدمجين بدل إيقاف التداول كليًا (وتستمر محاولة المصدر الحي)
+                self.news.apply_feed(builtin_events(now), now, source="مدمج احتياطي (NFP + FOMC فقط — التقويم الحي محظور 429)", cache=False)
+                log.warning("التقويم الحي غير متاح: تم تفعيل الجدول المدمج (NFP + FOMC فقط)")
         url = env("EVENTS_CSV_URL")
         if url:
             try:

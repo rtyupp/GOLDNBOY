@@ -387,7 +387,7 @@ class TestSupervisorAndNewsRefresh(unittest.IsolatedAsyncioTestCase):
         A.fetch_ff = lambda *a, **k: FetchResult(pf(SAMPLE), [], 0, False)
         d3 = app._refresh_events()
         self.assertEqual(app.news.source, "forexfactory")
-        self.assertEqual(d3, 3600.0)
+        self.assertEqual(d3, float(c.get("news.refresh_min")) * 60)   # الفترة العادية من الإعدادات (180 د)
         self.assertEqual(app._news_fails, 0)
 
 

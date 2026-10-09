@@ -15,6 +15,8 @@ FEED_HOSTS = ["https://nfs.faireconomy.media", "https://cdn-nfs.faireconomy.medi
 FEED_FILES = ("ff_calendar_thisweek.json", "ff_calendar_nextweek.json")
 FEED_URLS = [f"{h}/{f}" for h in FEED_HOSTS[:1] for f in FEED_FILES]    # للتوافق
 COLS = ["dt", "name", "impact", "currency", "forecast", "previous"]
+_HDR = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+        "Accept": "application/json,text/plain,*/*"}
 
 
 @dataclass
@@ -62,6 +64,31 @@ def parse_feed(items: list, currencies=("USD",)) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=COLS) if rows else _empty()
 
 
+# جدول FOMC الرسمي 2026 (يوم القرار الثاني، الساعة 2:00 م بتوقيت نيويورك). يُستخدم فقط كاحتياطي عند تعذّر التقويم الآلي.
+FOMC_DECISIONS_2026 = ["2026-01-28", "2026-03-18", "2026-04-29", "2026-06-17", "2026-07-29", "2026-09-16", "2026-10-28", "2026-12-09"]
+
+
+def builtin_events(now: pd.Timestamp, days: int = 45) -> pd.DataFrame:
+    """احتياطي بلا إنترنت: NFP (أول جمعة من كل شهر 8:30 نيويورك) + قرارات FOMC 2026 (2:00 م نيويورك).
+    تحويل التوقيت الصيفي تلقائي. لا يشمل CPI وغيره (تواريخه متغيرة) فهو تغطية جزئية فقط، ويُعلَّم المصدر بذلك."""
+    from zoneinfo import ZoneInfo
+    ny = ZoneInfo("America/New_York")
+    end = now + pd.Timedelta(days=days)
+    rows = []
+
+    def add(local_date, hh, mm, name):
+        dt = pd.Timestamp(f"{local_date} {hh:02d}:{mm:02d}", tz=ny).tz_convert("UTC")
+        if now - pd.Timedelta(days=1) <= dt <= end:
+            rows.append({"dt": dt, "name": name, "impact": "high", "currency": "USD", "forecast": "", "previous": ""})
+    for off in range(-1, 3):
+        m = (now + pd.DateOffset(months=off)).replace(day=1)
+        first_fri = m + pd.Timedelta(days=(4 - m.weekday()) % 7)
+        add(first_fri.strftime("%Y-%m-%d"), 8, 30, "Non-Farm Employment Change (NFP)")
+    for d in FOMC_DECISIONS_2026:
+        add(d, 14, 0, "FOMC Federal Funds Rate decision")
+    return pd.DataFrame(rows, columns=COLS) if rows else _empty()
+
+
 @dataclass
 class FetchResult:
     df: Optional[pd.DataFrame]
@@ -75,7 +102,7 @@ def fetch_feed(session, urls=FEED_URLS, currencies=("USD",), timeout: float = 20
     frames, errors = [], []
     for u in urls:
         try:
-            r = session.get(u, timeout=timeout, headers={"User-Agent": "Mozilla/5.0 goldbot"})
+            r = session.get(u, timeout=timeout, headers=_HDR)
             if r.status_code != 200:
                 errors.append(f"{u.rsplit('/', 1)[-1]}: HTTP {r.status_code}")
                 continue
@@ -96,7 +123,7 @@ def fetch_ff(session, hosts=FEED_HOSTS, currencies=("USD",), timeout: float = 20
     retry_after, limited = 0.0, False
     for h in hosts:
         try:
-            r = session.get(f"{h}/{FEED_FILES[0]}", timeout=timeout, headers={"User-Agent": "Mozilla/5.0 goldbot"})
+            r = session.get(f"{h}/{FEED_FILES[0]}", timeout=timeout, headers=_HDR)
         except Exception as e:
             errors.append(f"{h.split('//')[-1]}: {type(e).__name__}")
             continue
@@ -117,7 +144,7 @@ def fetch_ff(session, hosts=FEED_HOSTS, currencies=("USD",), timeout: float = 20
             errors.append(f"{h.split('//')[-1]}: JSON {type(e).__name__}")
             continue
         try:                                   # الأسبوع القادم: اختياري
-            r2 = session.get(f"{h}/{FEED_FILES[1]}", timeout=timeout, headers={"User-Agent": "Mozilla/5.0 goldbot"})
+            r2 = session.get(f"{h}/{FEED_FILES[1]}", timeout=timeout, headers=_HDR)
             if r2.status_code == 200:
                 frames.append(parse_feed(r2.json(), currencies))
         except Exception:
@@ -174,11 +201,11 @@ class NewsFilter:
             except Exception as e:
                 log.warning("تعذّر قراءة كاش الأخبار: %s", e)
 
-    def apply_feed(self, df: pd.DataFrame, now: Optional[pd.Timestamp] = None, source: str = "forexfactory"):
+    def apply_feed(self, df: pd.DataFrame, now: Optional[pd.Timestamp] = None, source: str = "forexfactory", cache: bool = True):
         now = now or pd.Timestamp.now(tz="UTC")
         self.feed_events, self.last_ok, self.last_error, self.source = df, now, None, source
         self._merge()
-        if self.cache_path:
+        if self.cache_path and cache:
             try:
                 os.makedirs(os.path.dirname(self.cache_path) or ".", exist_ok=True)
                 out = df.copy()

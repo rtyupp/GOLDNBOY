@@ -60,7 +60,8 @@ sessions_or_minutes: 30
 
 news:
   auto_feed: true           # جلب تقويم الأخبار آليًا (Forex Factory المجاني، بدون مفتاح) كل refresh_min دقيقة
-  refresh_min: 60
+  refresh_min: 180          # التقويم أسبوعي؛ قلّة الطلبات = أقل حظر 429 (Render يشارك IP مع كثيرين)
+  builtin_fallback: true    # إن حُظر التقويم الحي: استخدم NFP + FOMC المدمجين (تغطية جزئية) بدل منع كل الصفقات
   currencies: [USD]         # العملات المؤثرة على الذهب (الدولار)
   ai_fallback: false        # لا نهدر حصة Gemini عند تعطل التقويم؛ غياب التقويم = لا صفقة بأمان
   cache_path: data/news_cache.json

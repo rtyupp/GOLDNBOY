@@ -24,7 +24,13 @@ def load_cached(provider, symbol: str, interval: str, days: int, cache_dir: str,
     start = want_start
     if not cached.empty and cached.index[0] <= want_start + pd.Timedelta(days=3):
         start = cached.index[-1]            # only download the missing tail
-    fresh = provider.fetch(interval, start, now)
+    try:
+        fresh = provider.fetch(interval, start, now)
+    except Exception as e:
+        if cached.empty:
+            raise
+        log.warning("تعذّر تحديث الذيل (%s) ← استخدام الكاش الموجود", e)
+        fresh = cached.iloc[0:0]
     if not fresh.empty:
         # drop the still-forming bar so we never cache a partial candle
         step = pd.Timedelta(_STEP[interval])

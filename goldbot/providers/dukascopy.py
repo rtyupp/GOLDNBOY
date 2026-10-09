@@ -9,6 +9,7 @@ import io
 import lzma
 import logging
 import struct
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
@@ -35,6 +36,17 @@ class DukascopyHistory(HistoryProvider):
         self.retries = max(1, int(cfg.get("retries", 3)))
         self.s = session or requests.Session()
         self.s.headers.setdefault("User-Agent", "Mozilla/5.0 goldbot")
+        self._lock = threading.Lock()
+        self.progress = (0, 0)                    # (hours done, hours total) of the current fetch - shown in /status
+        self.stats = {"ok": 0, "missing": 0, "errors": 0}
+        self.last_error: str | None = None
+
+    def _count(self, key: str, err: str | None = None):
+        with self._lock:
+            self.stats[key] += 1
+            if err:
+                self.last_error = err
+            self.progress = (self.progress[0] + 1, self.progress[1])
 
     def url_for(self, hour: pd.Timestamp, base: str | None = None) -> str:
         # Dukascopy month folders are 00..11 (zero-based) - month-1 is required
@@ -58,26 +70,32 @@ class DukascopyHistory(HistoryProvider):
 
     def _hour(self, hour: pd.Timestamp):
         empty = pd.DataFrame(columns=["close", "volume"])
+        err = None
         for base in (self.base, self.alt_base):
             for attempt in range(self.retries):
                 try:
                     r = self.s.get(self.url_for(hour, base), timeout=self.timeout)
                 except requests.RequestException as e:
-                    log.debug("Dukascopy network error %s (%s): %s", hour, base, e)
+                    err = f"{type(e).__name__}"
                     time.sleep(0.4 * (attempt + 1))
                     continue
-                if r.status_code in (404, 403):          # hour not published (weekend / still open / not yet available)
+                if r.status_code == 404:                  # hour not published (weekend / still open / not yet available)
+                    self._count("missing")
                     return empty
                 if r.status_code == 200:
                     if not r.content:
-                        return empty                      # market closed: empty file
-                    try:
-                        return self.decode_ticks(r.content, hour, self.scale)
-                    except (lzma.LZMAError, struct.error, ValueError) as e:
-                        log.debug("Dukascopy corrupt hour %s: %s", hour, e)
+                        self._count("missing")            # market closed: empty file
                         return empty
-                time.sleep(0.4 * (attempt + 1))           # 429 / 5xx: back off and retry
-            # network-level failure on this scheme -> try the other one
+                    try:
+                        out = self.decode_ticks(r.content, hour, self.scale)
+                        self._count("ok")
+                        return out
+                    except (lzma.LZMAError, struct.error, ValueError) as e:
+                        self._count("errors", f"corrupt file: {type(e).__name__}")
+                        return empty
+                err = f"HTTP {r.status_code}"             # 403 / 429 / 5xx: blocked or throttled -> back off, retry
+                time.sleep(0.8 * (attempt + 1))
+        self._count("errors", err)
         return empty
 
     def fetch(self, interval: str, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
@@ -86,9 +104,14 @@ class DukascopyHistory(HistoryProvider):
         start = start.tz_localize("UTC") if start.tzinfo is None else start.tz_convert("UTC")
         end = end.tz_localize("UTC") if end.tzinfo is None else end.tz_convert("UTC")
         hours = list(pd.date_range(start.floor("h"), end.ceil("h"), freq="h", inclusive="left", tz="UTC"))
+        self.stats = {"ok": 0, "missing": 0, "errors": 0}
+        self.progress = (0, len(hours))
         with ThreadPoolExecutor(max_workers=self.workers) as pool:
             parts = list(pool.map(self._hour, hours))
         ticks = [p for p in parts if not p.empty]
+        if not ticks and self.stats["errors"] > 0 and self.stats["errors"] >= self.stats["missing"]:
+            # do NOT pretend "no data": the source is unreachable/blocked -> surface the real reason
+            raise RuntimeError(f"Dukascopy غير متاح ({self.stats['errors']} فشل من {len(hours)} ساعة، آخر خطأ: {self.last_error})")
         if not ticks:
             return pd.DataFrame(columns=OHLCV, index=pd.DatetimeIndex([], tz="UTC"))
         t = pd.concat(ticks).sort_index()
