@@ -8,7 +8,7 @@ mode: paper                 # آمن افتراضيًا: تسجيل فقط. غي
 
 providers:                  # كل مزوّد بيانات قابل للاستبدال من هنا
   live: swissquote_public    # مصدر عام مجاني بلا API key؛ يبني شموع M1/M5 محليًا
-  history: dukascopy_free     # تاريخ مجاني بلا مفتاح؛ يرجع إلى SiftingIO عند غياب الملفات
+  history: siftingio_rest     # تاريخ مجاني حالي؛ Dukascopy احتياطي للملفات القديمة
   dukascopy:
     url: http://datafeed.dukascopy.com/datafeed
     instrument: XAUUSD

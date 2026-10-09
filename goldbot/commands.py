@@ -23,12 +23,19 @@ def build_handlers(app) -> dict:
         op = app.journal.open_trades()
         ml = app.ml
         n_ev = len(app.news.events)
+        min_rows = int(app.cfg.get("data.min_history_rows", 14400))
+        if app.md.history_rows >= min_rows:
+            hist = f"سليمة ({app.md.history_rows} شمعة)"
+        elif app.md.history_error:
+            hist = f"خطأ: {app.md.history_error}"
+        else:
+            hist = f"قيد التحميل ({app.md.history_rows}/{min_rows})"
         return "\n".join([
             "حالة النظام",
             f"الاتصال اللحظي: {'متصل ✅' if t.connected else 'منقطع ❌'}   عدد التحديثات: {t.count}",
             f"السعر اللحظي: {'حديث ✅' if fresh else 'غير صالح ❌ (' + T.reason_ar(why) + ')'}   عمر آخر تحديث: {_age(t.age_sec())}",
             f"الشموع: {app.md.summary()}",
-            f"البيانات التاريخية: {'سليمة (' + str(app.md.history_rows) + ' شمعة)' if not app.md.history_error else 'خطأ: ' + app.md.history_error}",
+            f"البيانات التاريخية: {hist}",
             f"تقويم الأخبار: {n_ev} حدث مهم — المصدر: {app.news.source}" + (f"  آخر تحديث ناجح: {app.news.last_ok:%m-%d %H:%M} UTC" if app.news.last_ok is not None else "")
             + ("  ⚠️ لا توجد بيانات" if n_ev == 0 else "") + (f"\n  ⚠️ فشل آخر جلب: {app.news.last_error}" if app.news.last_error else ""),
             f"الوضع: {'حقيقي' if app.cfg.get('mode') == 'live' else 'تجريبي (بدون إرسال)'}   الذكاء الاصطناعي: {'مفعّل (' + app.gemini.model + ')' if app.gemini.enabled else 'معطّل'}",

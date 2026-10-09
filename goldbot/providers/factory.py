@@ -51,7 +51,10 @@ def make_history_provider(cfg: Cfg):
         from goldbot.providers.siftingio_rest import SiftingRestHistory
         key = env("SIFTING_API_KEY")
         if not key:
-            raise RuntimeError("SIFTING_API_KEY is not set")
+            from goldbot.providers.dukascopy import DukascopyHistory
+            import logging
+            logging.getLogger("providers").warning("SIFTING_API_KEY missing; using Dukascopy historical fallback")
+            return DukascopyHistory(cfg.section("providers.dukascopy"), cfg.get("symbol", "XAUUSD"))
         return SiftingRestHistory(cfg.section("providers.siftingio"), key, cfg.get("symbol", "XAUUSD"))
     if kind == "csv":
         from goldbot.providers.csv_history import CsvHistory
