@@ -8,16 +8,15 @@ TREND = {"BULLISH": "صاعد", "BEARISH": "هابط", "RANGE": "عرضي", "TRA
 STRENGTH = {"STRONG": "قوي", "WEAK": "ضعيف", "NONE": "-"}
 SESSION = {"Asian": "آسيا", "London": "لندن", "New York": "نيويورك", "London/New York": "لندن/نيويورك (تداخل)",
            "Off-hours": "خارج الجلسات"}
-STRATEGY = {"Trend Pullback": "ارتداد مع الاتجاه", "Liquidity Sweep": "اصطياد السيولة", "Breakout": "الاختراق",
+STRATEGY = {"Trend Pullback": "ارتداد مع الاتجاه", "Liquidity Sweep": "اصطياد السيولة", "SMC Sweep + FVG/OB": "SMC: سحب سيولة + FVG/OB", "Breakout": "الاختراق",
             "Reversal": "الانعكاس", "VWAP": "فواب (VWAP)"}
 BREAK = {"BOS": "كسر هيكل BOS", "CHoCH": "تغيّر طابع CHoCH"}
 RESULT = {"SL": "ضرب وقف الخسارة", "TP2": "حقق الهدف الثاني", "TP1_BE": "هدف أول ثم تعادل", "EXPIRED": "انتهت المدة",
           "OPEN": "مفتوحة", "TP1": "بعد الهدف الأول", "CLOSED": "مغلقة"}
-NEWS_STATE = {"CLEAR": "لا أخبار", "PRE_NEWS": "قبل خبر مهم", "POST_NEWS": "بعد خبر مهم"}
 RISK_LEVEL = {"Low": "منخفضة", "Medium": "متوسطة", "High": "مرتفعة"}
 SWEEP_KIND = {"sweep": "سحب سيولة", "failed_breakout": "اختراق فاشل"}
 STAGE = {"DATA": "البيانات", "CANDLES": "الشموع", "INDICATORS": "المؤشرات", "STRUCTURE": "الهيكل", "LIQUIDITY": "السيولة",
-         "STRATEGY": "الاستراتيجيات", "SCORE": "التقييم", "PROBABILITY": "الاحتمال التاريخي", "RISK": "المخاطرة", "AI": "الذكاء الاصطناعي"}
+         "STRATEGY": "الاستراتيجيات", "SCORE": "التقييم", "PROBABILITY": "الاحتمال التاريخي", "RISK": "المخاطرة", "DECISION": "القرار"}
 CHECKS = {
     "HTF trend": "اتجاه الفريمات الكبيرة", "pullback to EMA": "ارتداد إلى المتوسط EMA", "VWAP": "فواب VWAP",
     "structure intact": "الهيكل سليم", "confirmation": "شمعة التأكيد", "momentum": "الزخم", "zone support": "منطقة داعمة",
@@ -34,11 +33,10 @@ REASONS = {
     "NO_TICK_YET": "لم يصل أي سعر لحظي بعد", "WS_DISCONNECTED": "الاتصال اللحظي (WebSocket) منقطع",
     "STALE_DATA": "بيانات السعر قديمة", "NO_QUOTE": "لا يوجد سعر Bid/Ask", "NO_CANDLES": "لا توجد شموع كافية",
     "CANDLE_GAP": "فجوة في الشموع", "INSUFFICIENT_HISTORY": "بيانات تاريخية غير كافية", "NO_ANALYSIS": "لا يوجد تحليل",
-    "NEWS_HIGH_RISK": "خبر عالي التأثير قريب (ممنوع التداول)", "NEWS_SETTLING": "انتظار استقرار السوق بعد الخبر", "NEWS_CALENDAR_UNAVAILABLE": "تقويم الأخبار غير متوفر حاليًا (لا تداول احتياطًا)",
     "SPREAD_HIGH": "السبريد مرتفع", "SPREAD_VS_RISK": "السبريد كبير مقارنة بالمخاطرة", "HTF_CONFLICT": "تعارض اتجاه الفريمات الكبيرة (4H مقابل 1H)",
     "CHOPPY_MARKET": "سوق متذبذب بلا اتجاه واضح", "OFF_HOURS": "خارج جلسات التداول", "NO_SETUP": "لا يوجد إعداد مكتمل",
     "LOW_CONFLUENCE": "تقاطع الأدلة ضعيف", "WEAK_PROBABILITY": "الاحتمال التاريخي ضعيف",
-    "PROBABILITY_UNAVAILABLE": "الاحتمال التاريخي غير متوفر (عينة غير كافية)", "AI_REJECTED": "الذكاء الاصطناعي رفض الصفقة",
+    "PROBABILITY_UNAVAILABLE": "الاحتمال التاريخي غير متوفر (عينة غير كافية)",
     "CONFLICTING_STRATEGIES": "استراتيجيات متعارضة (شراء مقابل بيع)", "ML_LOW": "نموذج التعلم الآلي يرى احتمالًا منخفضًا",
     "OPEN_TRADE_EXISTS": "توجد صفقة مفتوحة", "COOLDOWN": "فترة انتظار بعد آخر إشارة",
     "TELEGRAM_SEND_FAILED": "فشل الإرسال إلى تيليجرام", "SL_ILLOGICAL": "وقف الخسارة غير منطقي",
@@ -53,10 +51,6 @@ def reason_ar(code: str) -> str:
     base = REASONS.get(name)
     if base is None:
         return code
-    if name in ("NEWS_HIGH_RISK", "NEWS_SETTLING") and "|" in d:
-        ev, mins = d.split("|", 1)
-        word = "بعد" if name == "NEWS_HIGH_RISK" else "قبل"
-        return f"{base}: {ev} {word} {mins} دقيقة"
     for a, b in DETAIL_REPL:
         d = d.replace(a, b)
     return f"{base} ({d})" if d else base

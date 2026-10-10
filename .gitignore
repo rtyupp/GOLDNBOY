@@ -10,7 +10,6 @@ data/cache/
 data/*.sqlite
 data/*.sqlite-*
 data/*.pkl
-data/news_cache.json
 logs/
 reports/backtest_*.json
 reports/trades_*.csv

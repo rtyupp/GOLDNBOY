@@ -71,7 +71,7 @@ def cmd_backtest(cfg, a):
                   f"متوسط R={r.get('avg_r')} معامل الربح={r.get('profit_factor')} أقصى تراجع(R)={r.get('max_drawdown_r')}")
         if a.store:
             print(f"  تم حفظ {store_probability_history(j, res)} صفقة في سجل الاحتمال التاريخي")
-    print("ملاحظة: نتائج الـ Backtest تقدير للماضي وليست ضمانًا للمستقبل. السبريد مفترض ولم يُطبَّق فلتر الأخبار.")
+    print("ملاحظة: نتائج الـ Backtest تقدير للماضي وليست ضمانًا للمستقبل. السبريد مفترض ولا يوجد فلتر أخبار.")
 
 
 def cmd_train_ml(cfg):
@@ -90,12 +90,7 @@ def cmd_check(cfg):
     print("TELEGRAM_BOT_TOKEN   :", ok(env("TELEGRAM_BOT_TOKEN")))
     print("TELEGRAM_ADMIN_IDS   :", env("TELEGRAM_ADMIN_IDS") or "ناقص ❌  (اكتب /id للبوت ليعطيك رقمك)")
     print("وجهة الإشارات        :", cfg.get("telegram.signal_target", "private"), "| TELEGRAM_CHANNEL_ID:", env("TELEGRAM_CHANNEL_ID") or "غير مستخدم الآن")
-    if cfg.get("ai.enabled"):
-        model = env("GEMINI_MODEL") or cfg.get("ai.model") or "gemini-3.8-flash"
-        print("Gemini               :", (("دالتك الحالية: " + cfg.get("ai.adapter")) if cfg.get("ai.adapter")
-              else f"REST — النموذج {model} — GEMINI_API_KEY {ok(env('GEMINI_API_KEY'))}"))
-    else:
-        print("Gemini               : معطّل (ai.enabled=false) — لا حاجة لمفتاح")
+    print("القرار المحلي       : الاستراتيجيات والمؤشرات فقط ✅")
     if env("TELEGRAM_BOT_TOKEN"):
         try:
             r = requests.get(f"https://api.telegram.org/bot{env('TELEGRAM_BOT_TOKEN')}/getMe", timeout=15).json()
@@ -118,10 +113,7 @@ def cmd_check(cfg):
         print("Dukascopy (تاريخي)   :", f"نجح ✅ ({len(df)} شمعة 1m خلال آخر 48 ساعة)" if len(df) else "لا توجد شموع (تحقق من الشبكة، أو السوق مغلق/عطلة)")
     except Exception as e:
         print("Dukascopy (تاريخي)   : فشل ❌", type(e).__name__, e)
-    from goldbot.analysis.news import NewsFilter, fetch_ff, FEED_HOSTS
-    res = fetch_ff(requests.Session(), cfg.get("news.feed_hosts", FEED_HOSTS), tuple(cfg.get("news.currencies", ["USD"])))
-    print("تقويم الأخبار (FF)   :", f"نجح ✅ ({len(res.df)} حدث مهم)" if res.df is not None else "فشل ❌ " + "، ".join(res.errors))
-    print("ملف الأخبار اليدوي   :", len(NewsFilter(cfg.get("news.events_file")).events), "حدث")
+    print("مصدر الأحداث الخارجية : محذوف ✅")
 
 
 def main(argv=None):

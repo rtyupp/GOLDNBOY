@@ -1,5 +1,5 @@
 """LIVE DATA -> candles -> indicators -> structure -> liquidity -> strategies -> confluence ->
-probability -> risk -> (Gemini) -> BUY / SELL / NO TRADE.  Same code path for live and backtest."""
+probability -> risk -> BUY / SELL / NO TRADE.  Same code path for live and backtest."""
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
@@ -30,7 +30,6 @@ class Candidate:
     fp: dict = field(default_factory=dict)
     reasons: List[str] = field(default_factory=list)      # gate reasons so far (empty => ready for AI)
     global_reasons: List[str] = field(default_factory=list)  # setup-independent gates (used by backtest)
-    png: Optional[bytes] = None                              # صورة الشارت المرسلة للمراجعة
 
     @property
     def tradable(self) -> bool:
@@ -38,21 +37,18 @@ class Candidate:
 
 
 class Pipeline:
-    def __init__(self, cfg, journal=None, news=None, ml=None, only: Optional[List[str]] = None):
+    def __init__(self, cfg, journal=None, ml=None, only: Optional[List[str]] = None):
         self.cfg = cfg
         self.analyzer = Analyzer(cfg)
         self.risk = RiskEngine(cfg)
-        self.news = news
         self.ml = ml
         self.prob_engine = ProbabilityEngine(journal, cfg) if journal is not None else None
         keys = only or cfg.get("strategies.enabled", [c.key for c in ALL])
         self.strategies = [c(cfg, self.risk) for c in ALL if c.key in keys]
 
-    # ---- stage 1..: everything except Gemini -------------------------------------------------
+    # ---- stage 1..: all local stages -------------------------------------------------
     def prepare(self, frames: Dict[str, pd.DataFrame], bid: float, ask: float, as_of: pd.Timestamp,
-                data_ok: bool = True, data_reason: str = "OK", use_probability: bool = True,
-                news_status=None) -> Candidate:
-        from goldbot.analysis.news import NewsStatus
+                data_ok: bool = True, data_reason: str = "OK", use_probability: bool = True) -> Candidate:
         lg = CycleLog(ts=as_of.strftime("%Y-%m-%d %H:%M UTC"))
         lg.set("DATA", "سليمة" if data_ok else f"فشل ({T.reason_ar(data_reason)})")
         cand = Candidate(None, lg)
@@ -60,9 +56,7 @@ class Pipeline:
             lg.set("CANDLES", "تم التخطي")
             cand.reasons = no_trade.global_gates(self.cfg, None, False, data_reason)
             return self._done(cand)
-        if news_status is None:
-            news_status = self.news.status(as_of) if self.news else NewsStatus("CLEAR")
-        ctx, why = self.analyzer.analyze(frames, bid, ask, as_of, news_status)
+        ctx, why = self.analyzer.analyze(frames, bid, ask, as_of)
         if ctx is None:
             lg.set("CANDLES", f"فشل ({T.reason_ar(why)})")
             cand.reasons = [why]
@@ -134,18 +128,11 @@ class Pipeline:
             cand.log.reasons = cand.reasons
         return cand
 
-    # ---- finalize after Gemini ------------------------------------------------------------------
-    def finalize(self, cand: Candidate, ai_decision=None) -> Candidate:
+    # ---- finalize local decision ---------------------------------------------------------------
+    def finalize(self, cand: Candidate) -> Candidate:
+        """اعتماد الإشارة بعد اجتياز جميع الفلاتر المحلية."""
         if not cand.tradable:
             return cand
-        if ai_decision is not None:
-            cand.log.set("AI", f"{'وافق' if ai_decision.decision == cand.best.signal else 'رفض'} ({T.DIR.get(ai_decision.decision, ai_decision.decision)}: {ai_decision.reason[:80]})")
-            cand.reasons += no_trade.setup_gates(self.cfg, cand.best, 100.0, None, ai_decision)[-1:] if ai_decision.decision != cand.best.signal else []
-        else:
-            cand.log.set("AI", "تم التخطي")
-        if cand.reasons:
-            cand.log.final = "NO TRADE"
-            cand.log.reasons = cand.reasons
-        else:
-            cand.log.final = f"{cand.best.signal} SENT"
+        cand.log.set("DECISION", "اعتماد محلي من الاستراتيجيات والمؤشرات")
+        cand.log.final = f"{cand.best.signal} SENT"
         return cand

@@ -96,6 +96,48 @@ class LiquiditySweep(Strategy):
         return ch, inval, {"setup": "Liquidity Sweep", "sweep": (sw.pool_kind, round(sw.level, 2)) if sw else None}
 
 
+class SMCReclaim(Strategy):
+    """Causal SMC sequence: raid -> structure shift -> fresh zone retest."""
+    key, label = "smc_reclaim", "SMC Sweep + FVG/OB"
+
+    def check(self, ctx, d):
+        s5, s15 = ctx.tf["5m"], ctx.tf["15m"]
+        ch = Checks()
+        sweeps = [s for s in s5.sweeps if s.expected == d and s.confirmed and s.bars_ago <= 12]
+        sweep = sorted(sweeps, key=lambda s: (s.bars_ago, -s.depth))[0] if sweeps else None
+        ch.add("SMC liquidity raid", sweep is not None, 20, True)
+
+        shift = None
+        if sweep is not None:
+            for b in reversed(s5.breaks):
+                if b.direction == d and b.idx > sweep.idx and len(s5.df) - 1 - b.idx <= 12:
+                    shift = b
+                    break
+        ch.add("SMC BOS/CHoCH", shift is not None, 20, True)
+
+        zones = [z for z in s5.zones + s15.zones
+                 if z.direction == d and z.kind in ("fvg_bull", "fvg_bear", "demand", "supply")
+                 and not z.mitigated and z.score >= 40 and z.age <= 40]
+        near = [z for z in zones if z.bottom - 0.35 * s5.atr <= ctx.mid <= z.top + 0.35 * s5.atr]
+        zone = sorted(near, key=lambda z: (-z.score, z.age))[0] if near else None
+        ch.add("fresh FVG/Order Block retest", zone is not None, 20, True)
+
+        highs = [s.price for s in s15.swings if s.kind == "H"]
+        lows = [s.price for s in s15.swings if s.kind == "L"]
+        eq = (max(highs[-2:]) + min(lows[-2:])) / 2 if len(highs) >= 2 and len(lows) >= 2 else None
+        location_ok = eq is not None and ((ctx.mid <= eq and d == "bull") or (ctx.mid >= eq and d == "bear"))
+        ch.add("premium/discount", location_ok, 15, True)
+        active = ctx.session["label"] in ("London", "New York", "London/New York")
+        ch.add("London/New York session", active, 10)
+        ch.add("HTF alignment", ctx.mtf["bias"] in (d, "neutral") or ctx.mtf["strength"] == "WEAK", 15, True)
+        ch.add("displacement confirmation", _bullish_close_break(s5.df, d), 10)
+
+        inval = (min(sweep.extreme, zone.bottom) if d == "bull" else max(sweep.extreme, zone.top)) if sweep and zone else None
+        tags = {"setup": "SMC Sweep + FVG/OB", "zone": zone.kind if zone else None,
+                "sweep": sweep.pool_kind if sweep else None, "structure": shift.kind if shift else None}
+        return ch, inval, tags
+
+
 class Breakout(Strategy):
     key, label = "breakout", "Breakout"
 
@@ -194,4 +236,4 @@ class VwapStrategy(Strategy):
         return ch, inval, {"setup": "VWAP"}
 
 
-ALL = [TrendPullback, LiquiditySweep, Breakout, Reversal, VwapStrategy]
+ALL = [TrendPullback, LiquiditySweep, SMCReclaim, Breakout, Reversal, VwapStrategy]

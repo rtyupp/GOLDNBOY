@@ -52,7 +52,7 @@ class Telegram:
         keyboard = {
             "keyboard": [
                 [{"text": "💰 السعر اللحظي"}, {"text": "📊 حالة النظام"}],
-                [{"text": "📰 الأخبار القادمة"}, {"text": "📈 التحليل الحالي"}],
+                [{"text": "📈 التحليل الحالي"}, {"text": "🌐 نظرة السوق"}],
                 [{"text": "🎯 آخر إعداد"}, {"text": "❓ المساعدة"}]
             ],
             "resize_keyboard": True
@@ -147,8 +147,8 @@ class CommandBot:
         mapping = {
             "💰 السعر اللحظي": "/price",
             "📊 حالة النظام": "/status",
-            "📰 الأخبار القادمة": "/news",
             "📈 التحليل الحالي": "/analysis",
+            "🌐 نظرة السوق": "/market",
             "🎯 آخر إعداد": "/signal",
             "❓ المساعدة": "/help"
         }
@@ -214,27 +214,12 @@ class CommandBot:
             return
         if self.tg.admin_ids and uid not in self.tg.admin_ids:
             return
-        if self.ai is None or not (text.strip() or has_photo):
+        if not (text.strip() or has_photo):
             return
-        lock = self._locks.setdefault(chat, asyncio.Lock())
-        async with lock:                                   # رسائل نفس المحادثة بالترتيب، ومحادثات مختلفة بالتوازي
-            helper = asyncio.create_task(self._typing_and_ack(chat))
-            try:
-                img = await asyncio.to_thread(self.tg.download_photo, m) if has_photo else None
-
-                async def send_photo(png):
-                    await asyncio.to_thread(self.tg.send_photo, chat, png, "")
-                reply, photos = await self.ai(chat, text, img, send_photo=send_photo)
-            except Exception as e:
-                log.exception("فشل المساعد")
-                reply, photos = f"حدث خطأ غير متوقع ({type(e).__name__}). جرّب الأوامر: /status /price /analysis", []
-            finally:
-                helper.cancel()
-            if reply:
-                await asyncio.to_thread(self.tg.send_message, chat, reply)
-            for png in photos:
-                await asyncio.to_thread(self.tg.send_photo, chat, png, "")
-
+        if has_photo:
+            self.tg.send_message(chat, "تحليل الصور غير متاح. استخدم /analysis أو الأزرار السفلية للتحليل البرمجي.")
+        elif text.strip():
+            self.tg.send_message(chat, "استخدم الأزرار السفلية أو /help. التحليل يعتمد على الاستراتيجيات والمؤشرات المحلية فقط.")
     async def _safe(self, u: dict):
         try:
             await self.handle_update(u)

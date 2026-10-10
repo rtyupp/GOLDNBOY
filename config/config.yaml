@@ -1,7 +1,7 @@
 # ============================================================================
 #  إعدادات بوت الذهب XAU/USD.  المفاتيح السرية لا تُكتب هنا، بل في متغيرات البيئة:
 #  TELEGRAM_BOT_TOKEN, TELEGRAM_ADMIN_IDS   (فقط! كل مصادر البيانات مجانية وبلا مفاتيح)
-#  اختياري: TELEGRAM_CHANNEL_ID, BOT_MODE=live|paper, GEMINI_API_KEY (فقط إن فعّلت ai.enabled)
+#  اختياري: TELEGRAM_CHANNEL_ID, BOT_MODE=live|paper, لا توجد مفاتيح خارجية للتحليل
 # ============================================================================
 symbol: XAUUSD
 mode: paper                 # آمن افتراضيًا: تسجيل فقط (لا ترسل إشارات). للتفعيل ضع متغير البيئة BOT_MODE=live أو غيّره هنا.
@@ -58,25 +58,12 @@ sessions:                   # ساعات UTC [بداية، نهاية). لا ي�
   new_york: [12, 21]
 sessions_or_minutes: 30
 
-news:
-  auto_feed: true           # جلب تقويم الأخبار آليًا (Forex Factory المجاني، بدون مفتاح) كل refresh_min دقيقة
-  refresh_min: 180          # التقويم أسبوعي؛ قلّة الطلبات = أقل حظر 429 (Render يشارك IP مع كثيرين)
-  builtin_fallback: true    # إن حُظر التقويم الحي: استخدم NFP + FOMC المدمجين (تغطية جزئية) بدل منع كل الصفقات
-  currencies: [USD]         # العملات المؤثرة على الذهب (الدولار)
-  ai_fallback: false        # لا نهدر حصة Gemini عند تعطل التقويم؛ غياب التقويم = لا صفقة بأمان
-  cache_path: data/news_cache.json
-  require_calendar: true    # إن تعذّر التقويم أكثر من max_age_hours: لا صفقة احتياطًا
-  max_age_hours: 36
-  events_file: data/events.csv   # اختياري: أحداث إضافية يدوية (datetime_utc,name,impact)
-  before_min: 30            # قبل الخبر: لا تداول
-  after_min: 15             # بعد الخبر: انتظار استقرار السوق
-
 filters:
   min_efficiency_ratio: 0.12
   allow_off_hours: false
 
 strategies:
-  enabled: [trend_pullback, liquidity_sweep, breakout, reversal, vwap]
+  enabled: [trend_pullback, liquidity_sweep, smc_reclaim, breakout, reversal, vwap]
   min_score: 60
 
 confluence:
@@ -108,17 +95,6 @@ tracking:
   tp1_partial_pct: 0.5      # نسبة الإغلاق عند الهدف الأول (لحساب R)
   max_trade_minutes: 1440
 
-ai:
-  enabled: true              # Gemini مفعّل للمحادثة والتحليل؛ يتطلب GEMINI_API_KEY
-  model: gemini-3.8-flash   # أقوى نموذج مجاني (الطبقة المجانية: Flash و Flash-Lite فقط؛ نماذج Pro ليست مجانية). يُتجاوز بمتغير GEMINI_MODEL
-  fallback_model: gemini-3.7-flash   # يُستخدم تلقائيًا إذا أوقفت Google النموذج الأساسي (404)
-  adapter: null             # "your_module:your_function" ← لاستخدام دالة Gemini الحالية عندك كما هي
-  on_error: pass           # block = لا صفقة عند فشل Gemini | pass = تجاهل الخطأ
-  timeout_sec: 30           # مهلة مراجعة الإشارة
-  chat_timeout_sec: 15      # مهلة كل استدعاء في محادثة تيليجرام (بعدها ينتقل للنموذج البديل ثم يرد البوت محليًا)
-  chat_thinking_level: low  # تفكير أقل = رد أسرع في المحادثة (minimal|low|medium|high)؛ إن رفضه النموذج يُتجاهل تلقائيًا
-  review_thinking_level: medium   # مراجعة الإشارات تستحق تفكيرًا أعمق
-
 ml:
   enabled: true             # يُدرَّب تلقائيًا بعد بناء السجل، ولا يتدخل في القرار إلا إذا اجتاز اختبار خارج العينة (AUC ≥ min_oos_auc)
   model_path: data/ml_model.pkl
@@ -136,6 +112,7 @@ bootstrap:                  # تهيئة ذاتية: Backtest ثم تدريب ML
 
 backtest:
   spread: 0.30
+  slippage: 0.05            # انزلاق سعري مفترض بالدولار لكل دخول
   history_days: 60
   steps: {1m: 5, 5m: 1, 15m: 1}
   report_dir: reports

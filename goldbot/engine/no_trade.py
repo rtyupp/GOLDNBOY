@@ -11,12 +11,6 @@ def global_gates(cfg, ctx, data_ok: bool, data_reason: str) -> List[str]:
         return r
     if ctx is None:
         return ["NO_ANALYSIS"]
-    if not getattr(ctx.news, "calendar_ok", True):
-        r.append("NEWS_CALENDAR_UNAVAILABLE")
-    if ctx.news.state == "PRE_NEWS":
-        r.append(f"NEWS_HIGH_RISK({ctx.news.event}|{ctx.news.minutes:.0f})")
-    elif ctx.news.state == "POST_NEWS":
-        r.append(f"NEWS_SETTLING({ctx.news.event}|{ctx.news.minutes:.0f})")
     if ctx.spread is None:
         r.append("NO_QUOTE")
     elif ctx.spread > cfg.get("risk.max_spread", 0.8):
@@ -32,7 +26,7 @@ def global_gates(cfg, ctx, data_ok: bool, data_reason: str) -> List[str]:
     return r
 
 
-def setup_gates(cfg, best, confluence_score: float, prob, ai_decision=None) -> List[str]:
+def setup_gates(cfg, best, confluence_score: float, prob) -> List[str]:
     r: List[str] = []
     if best is None or best.signal == "NONE":
         r.append("NO_SETUP")
@@ -45,6 +39,4 @@ def setup_gates(cfg, best, confluence_score: float, prob, ai_decision=None) -> L
                 r.append(f"WEAK_PROBABILITY(wr={prob.win_rate:.0%},avgR={prob.avg_r:.2f},n={prob.n})")
         elif cfg.get("probability.block_if_insufficient", True):
             r.append(f"PROBABILITY_UNAVAILABLE(n={prob.n}<{cfg.get('probability.min_samples', 30)})")
-    if ai_decision is not None and ai_decision.decision != best.signal:
-        r.append(f"AI_REJECTED({ai_decision.decision}: {ai_decision.reason[:80]})")
     return r

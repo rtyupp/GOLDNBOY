@@ -4,7 +4,7 @@ from typing import Dict, Tuple
 import numpy as np
 
 WEIGHTS = {"Trend": 20, "Structure": 15, "Liquidity": 15, "Momentum": 10, "VWAP": 10,
-           "Volatility": 5, "Session": 10, "News": 5, "PriceAction": 10}
+           "Volatility": 5, "Session": 10, "PriceAction": 15}
 
 
 def confluence(ctx, d: str, weights: Dict[str, float] | None = None) -> Tuple[float, Dict[str, float]]:
@@ -44,7 +44,6 @@ def confluence(ctx, d: str, weights: Dict[str, float] | None = None) -> Tuple[fl
     parts["Volatility"] = 1.0 if 0.2 <= pct <= 0.85 else 0.3
     lab = ctx.session["label"]
     parts["Session"] = {"London/New York": 1.0, "New York": 0.9, "London": 0.9, "Asian": 0.4}.get(lab, 0.2)
-    parts["News"] = 1.0 if ctx.news.state == "CLEAR" else 0.0
     pa = 0.0
     last = s5.df.iloc[-1]
     body = abs(last["close"] - last["open"]) / max(last["high"] - last["low"], 1e-9)

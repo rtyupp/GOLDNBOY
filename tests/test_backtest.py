@@ -62,7 +62,7 @@ class TestRun(unittest.TestCase):
         df = make_synthetic_1m(days=16, seed=11)
         res = run_backtest(df, c, "5m", warmup_days=12, max_evals=120)
         self.assertIn("strategies", res)
-        self.assertEqual(set(res["strategies"]), {"Trend Pullback", "Liquidity Sweep", "Breakout", "Reversal", "VWAP"})
+        self.assertEqual(set(res["strategies"]), {"Trend Pullback", "Liquidity Sweep", "SMC Sweep + FVG/OB", "Breakout", "Reversal", "VWAP"})
         j = Journal(os.path.join(tempfile.mkdtemp(), "j.sqlite"))
         n = store_probability_history(j, res)
         self.assertEqual(len(j.history_trades()), n)

@@ -15,7 +15,6 @@ import numpy as np
 import pandas as pd
 
 from goldbot.analysis.indicators import add_indicators
-from goldbot.analysis.news import NewsStatus
 from goldbot.analysis.sessions import session_label
 from goldbot.core.timeframes import resample_ohlcv, closed_only, ALL_TFS, TF_MINUTES
 from goldbot.engine.confluence import confluence
@@ -25,14 +24,18 @@ from goldbot.ml.model import features as ml_features
 log = logging.getLogger("backtest")
 
 
-def simulate_trade(plan, t0: pd.Timestamp, arr: dict, partial: float, spread: float, max_minutes: int):
+def simulate_trade(plan, t0: pd.Timestamp, arr: dict, partial: float, spread: float, max_minutes: int,
+                   slippage: float = 0.0):
     """Walk 1m bars starting at t0. Returns (result, r, duration_min, close_ts)."""
     idx = arr["index"]
     i0 = int(idx.searchsorted(t0, side="left"))
     buy = plan.direction == "BUY"
     sl_cur, state = plan.sl, "OPEN"
     half = spread / 2.0
-    risk = plan.risk
+    entry = plan.entry + (slippage if buy else -slippage)
+    risk = abs(entry - plan.sl)
+    if risk <= 0:
+        return "SL", -1.0, 1, idx[i0] + pd.Timedelta(minutes=1)
     hi, lo, cl = arr["high"], arr["low"], arr["close"]
     n = len(idx)
     end = min(n, i0 + max_minutes)
@@ -51,7 +54,7 @@ def simulate_trade(plan, t0: pd.Timestamp, arr: dict, partial: float, spread: fl
             if tp2_hit:
                 return "TP2", partial * plan.rr1 + (1 - partial) * plan.rr2, dur, ts
             if tp1_hit:
-                state, sl_cur = "TP1", plan.entry
+                state, sl_cur = "TP1", entry
                 if (lo[i] - half <= sl_cur) if buy else (hi[i] + half >= sl_cur):
                     pass          # BE touched in same bar after TP1: resolved on next bar to stay conservative-neutral
         else:
@@ -61,7 +64,7 @@ def simulate_trade(plan, t0: pd.Timestamp, arr: dict, partial: float, spread: fl
                 return "TP2", partial * plan.rr1 + (1 - partial) * plan.rr2, dur, ts
     last = min(end, n) - 1
     px = cl[last] - half if buy else cl[last] + half
-    move = (px - plan.entry) if buy else (plan.entry - px)
+    move = (px - entry) if buy else (entry - px)
     r = move / risk if state == "OPEN" else partial * plan.rr1 + (1 - partial) * move / risk
     return "EXPIRED", float(r), last - i0 + 1, idx[last] + pd.Timedelta(minutes=1)
 
@@ -100,6 +103,7 @@ def split_report(df: pd.DataFrame, frac: float = 0.7) -> dict:
 def run_backtest(base: pd.DataFrame, cfg, eval_tf: str = "5m", step: int = 1, max_evals: Optional[int] = None,
                  warmup_days: int = 12, only: Optional[List[str]] = None, progress=None) -> dict:
     spread = float(cfg.get("backtest.spread", 0.3))
+    slippage = float(cfg.get("backtest.slippage", 0.0))
     partial = float(cfg.get("tracking.tp1_partial_pct", 0.5))
     max_minutes = int(cfg.get("tracking.max_trade_minutes", 1440))
     min_conf = float(cfg.get("confluence.min_score", 70))
@@ -117,7 +121,6 @@ def run_backtest(base: pd.DataFrame, cfg, eval_tf: str = "5m", step: int = 1, ma
         ev = ev.iloc[-max_evals:]
     names = [s.label for s in pipe.strategies]
     books: Dict[str, dict] = {n: {"busy": pd.Timestamp(0, tz="UTC"), "trades": []} for n in names + ["ALL"]}
-    clear = NewsStatus("CLEAR")
     total = len(ev)
     for k, (_, row) in enumerate(ev.iterrows()):
         as_of = row["close_time"]
@@ -125,7 +128,7 @@ def run_backtest(base: pd.DataFrame, cfg, eval_tf: str = "5m", step: int = 1, ma
             continue
         frames = {tf: closed_only(ind[tf], as_of) for tf in ind}
         px = float(frames["1m"]["close"].iloc[-1]) if len(frames["1m"]) else float(row["close"])
-        cand = pipe.prepare(frames, px - spread / 2, px + spread / 2, as_of, True, "OK", use_probability=False, news_status=clear)
+        cand = pipe.prepare(frames, px - spread / 2, px + spread / 2, as_of, True, "OK", use_probability=False)
         if progress and k % 500 == 0:
             progress(k, total)
         if cand.ctx is None or cand.global_reasons:
@@ -140,10 +143,10 @@ def run_backtest(base: pd.DataFrame, cfg, eval_tf: str = "5m", step: int = 1, ma
                 confs[d] = confluence(ctx, d)
             if confs[d][0] < min_conf:
                 continue
-            _record(books[r.name], r, ctx, confs[d][0], as_of, arr, partial, spread, max_minutes, sessions, eval_tf)
+            _record(books[r.name], r, ctx, confs[d][0], as_of, arr, partial, spread, slippage, max_minutes, sessions, eval_tf)
         if cand.tradable and as_of >= books["ALL"]["busy"]:
-            _record(books["ALL"], cand.best, ctx, cand.confluence, as_of, arr, partial, spread, max_minutes, sessions, eval_tf)
-    out = {"eval_tf": eval_tf, "evals": total, "spread_assumed": spread, "strategies": {}, "books": {}}
+            _record(books["ALL"], cand.best, ctx, cand.confluence, as_of, arr, partial, spread, slippage, max_minutes, sessions, eval_tf)
+    out = {"eval_tf": eval_tf, "evals": total, "spread_assumed": spread, "slippage_assumed": slippage, "strategies": {}, "books": {}}
     for n, b in books.items():
         df = pd.DataFrame(b["trades"])
         b["df"] = df
@@ -160,9 +163,9 @@ def run_backtest(base: pd.DataFrame, cfg, eval_tf: str = "5m", step: int = 1, ma
     return out
 
 
-def _record(book, res, ctx, conf, as_of, arr, partial, spread, max_minutes, sessions, eval_tf):
+def _record(book, res, ctx, conf, as_of, arr, partial, spread, slippage, max_minutes, sessions, eval_tf):
     plan = res.plan
-    outcome, r, dur, close_ts = simulate_trade(plan, as_of, arr, partial, spread, max_minutes)
+    outcome, r, dur, close_ts = simulate_trade(plan, as_of, arr, partial, spread, max_minutes, slippage)
     book["busy"] = close_ts
     from goldbot.engine.probability import fingerprint
     fp = fingerprint(ctx, res)

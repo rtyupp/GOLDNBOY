@@ -5,11 +5,6 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 import pandas as pd
 
-from goldbot.ai.agents import build_card
-from goldbot.ai.assistant import Assistant
-from goldbot.ai.gemini_layer import GeminiLayer
-from goldbot.analysis.news import NewsFilter, fetch_ff, FEED_HOSTS, builtin_events
-from goldbot.analysis.news_ai import fetch_via_gemini
 from goldbot.bootstrap import Bootstrapper
 from goldbot.commands import build_handlers
 from goldbot.config import Cfg, env
@@ -30,41 +25,32 @@ log = logging.getLogger("app")
 
 
 class BotApp:
-    def __init__(self, cfg: Cfg, tg: Optional[Telegram] = None, gemini: Optional[GeminiLayer] = None,
+    def __init__(self, cfg: Cfg, tg: Optional[Telegram] = None,
                  history_provider=None, live_factory=None, journal: Optional[Journal] = None):
         self.cfg = cfg
         self.started = time.time()
         self.journal = journal or Journal(cfg.get("paths.journal", "data/journal.sqlite"))
-        self.news = NewsFilter(cfg.get("news.events_file", "data/events.csv"), cfg.get("news.before_min", 30), cfg.get("news.after_min", 15),
-                               require_calendar=bool(cfg.get("news.require_calendar", True)), max_age_h=float(cfg.get("news.max_age_hours", 36)),
-                               currencies=tuple(cfg.get("news.currencies", ["USD"])), cache_path=cfg.get("news.cache_path", "data/news_cache.json"))
         self.ml = MLGate(cfg) if cfg.get("ml.enabled", False) else None
         self.ticks = TickStore(cfg.get("data.max_tick_age_sec", 20))
         self.md = MarketData()
         self.builder = CandleBuilder(self.md.add_closed)
-        self.pipeline = Pipeline(cfg, self.journal, self.news, self.ml)
+        self.pipeline = Pipeline(cfg, self.journal, ml=self.ml)
         self.recorder = CycleRecorder(cfg.get("paths.log_dir", "logs"))
-        self.gemini = gemini or GeminiLayer(cfg)
         self.tg = tg
         self.history_provider = history_provider
         self.live_factory = live_factory
         self.notify_q: asyncio.Queue = asyncio.Queue()
         self.tracker = TradeTracker(self.journal, self.notify_q.put_nowait, cfg)
-        self.gemini.alert = self.notify_q.put_nowait
         self.ticks.add_listener(self.builder.on_tick)
         self.ticks.add_listener(self.tracker.on_tick)
         self.last_cand = None
         self.cmd = CommandBot(tg, build_handlers(self)) if tg else None
-        self.assistant = Assistant(self)
-        if self.cmd:
-            self.cmd.ai = self.assistant.answer
         self.live = None
         self._tasks: list = []
         self._stop = False
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self.bootstrap = Bootstrapper(self)
         self._bg: set = set()
-        self._news_fails = 0
 
     # ------------------------------------------------------------------ tasks
     async def load_history(self):
@@ -107,76 +93,14 @@ class BotApp:
             except Exception:
                 log.exception("انهارت دورة التحليل (البوت يستمر بالعمل)")
 
-    def _refresh_events(self) -> float:
-        """يجلب تقويم الأخبار ويرجع عدد الثواني قبل المحاولة التالية.
-        الترتيب: Forex Factory (مضيفان) ← بحث Gemini على الويب (احتياطي، فقط إن لم يوجد تقويم حديث) ← الكاش/CSV اليدوي."""
-        import requests
-        sess = requests.Session()
-        cur = tuple(self.cfg.get("news.currencies", ["USD"]))
-        normal = float(self.cfg.get("news.refresh_min", 60)) * 60
-        delay, ok = normal, False
-        if self.cfg.get("news.auto_feed", True):
-            res = fetch_ff(sess, self.cfg.get("news.feed_hosts", FEED_HOSTS), cur)
-            if res.df is not None:
-                self.news.apply_feed(res.df)
-                self._news_fails = 0
-                ok = True
-                log.info("تم تحديث تقويم الأخبار من Forex Factory: %d حدث مهم %s", len(self.news.events),
-                         ("(تحذير: " + "، ".join(res.errors) + ")") if res.errors else "")
-            else:
-                self._news_fails += 1
-                self.news.last_error = "، ".join(res.errors) or "فشل غير معروف"
-                delay = min(3600.0, max(res.retry_after, min(1800.0, 300.0 * 2 ** min(self._news_fails - 1, 3))))
-                log.warning("فشل جلب تقويم الأخبار: %s ← إعادة المحاولة بعد %.0f ثانية", self.news.last_error, delay)
-        if not ok and self.cfg.get("news.ai_fallback", True) and self.gemini.enabled and self.gemini.adapter is None \
-                and env("GEMINI_API_KEY"):
-            now = pd.Timestamp.now(tz="UTC")
-            stale = self.news.last_ok is None or (now - self.news.last_ok) > pd.Timedelta(hours=6)
-            if stale:
-                try:
-                    df = fetch_via_gemini(self.gemini, now, cur)
-                    if len(df):
-                        self.news.apply_feed(df, now, source="gemini-search (احتياطي، أقل دقة)")
-                        log.warning("تم استخدام بحث Gemini كمصدر احتياطي للأخبار: %d حدث", len(df))
-                        delay = min(delay, 3600.0)
-                    else:
-                        log.warning("بحث Gemini لم يُرجع أحداثًا صالحة")
-                except Exception as e:
-                    log.warning("فشل مصدر الأخبار الاحتياطي (Gemini): %s", e)
-        if not ok and self.cfg.get("news.builtin_fallback", True):
-            now = pd.Timestamp.now(tz="UTC")
-            stale = self.news.last_ok is None or (now - self.news.last_ok) > pd.Timedelta(hours=float(self.cfg.get("news.max_age_hours", 36)) / 2)
-            if stale:      # لا كاش حديث ولا تقويم حي: استخدم NFP/FOMC المدمجين بدل إيقاف التداول كليًا (وتستمر محاولة المصدر الحي)
-                self.news.apply_feed(builtin_events(now), now, source="مدمج احتياطي (NFP + FOMC فقط — التقويم الحي محظور 429)", cache=False)
-                log.warning("التقويم الحي غير متاح: تم تفعيل الجدول المدمج (NFP + FOMC فقط)")
-        url = env("EVENTS_CSV_URL")
-        if url:
-            try:
-                r = sess.get(url, timeout=20)
-                r.raise_for_status()
-                with open(self.news.path, "w", encoding="utf-8") as f:
-                    f.write(r.text)
-            except Exception as e:
-                log.warning("فشل تحميل EVENTS_CSV_URL: %s", e)
-        self.news.reload()
-        return delay
-
     async def housekeeping(self):
-        next_news = 0.0
+        """تحديث انتهاء الصفقات فقط؛ لا يعتمد التشغيل على أي مصدر أخبار خارجي."""
         while not self._stop:
-            if time.time() >= next_news:
-                try:
-                    delay = await asyncio.to_thread(self._refresh_events)
-                except Exception as e:
-                    log.warning("فشل تحديث تقويم الأخبار: %s", e)
-                    delay = 600.0
-                next_news = time.time() + delay
             tk = self.ticks.last
             if tk is not None and tk.has_quote:
                 self.tracker.check_expiry(pd.Timestamp.now(tz="UTC"), tk.bid, tk.ask)
             await asyncio.sleep(60)
 
-    # ------------------------------------------------------------------ one analysis cycle
     def data_status(self, as_of: pd.Timestamp):
         ok, why = self.ticks.check_fresh()
         if not ok:
@@ -208,17 +132,9 @@ class BotApp:
         if cand.tradable:
             self._apply_limits(cand, as_of)
         if cand.tradable:
-            card = build_card(self.cfg.get("symbol", "XAUUSD"), cand.ctx, cand.best, cand.confluence, cand.prob, cand.risk_level)
-            try:       # صورة الشارت تُرسل لـ Gemini ليتأكد منها بصريًا قبل الموافقة
-                cand.png = await asyncio.to_thread(render_chart, cand.ctx, cand.best.plan, self.cfg.get("telegram.chart_tf", "5m"),
-                                                   int(self.cfg.get("telegram.chart_bars", 100)))
-            except Exception:
-                log.exception("فشل رسم الشارت قبل مراجعة الذكاء الاصطناعي")
-                cand.png = None
-            ai = await self.gemini.decide(card, cand.best.signal, cand.png)
-            self.pipeline.finalize(cand, ai)
+            self.pipeline.finalize(cand)
             if cand.log.final.endswith("SENT"):
-                await self.emit_signal(cand, ai)
+                await self.emit_signal(cand)
         elif not cand.log.final.endswith("SENT"):
             cand.log.final = "NO TRADE"
             cand.log.reasons = cand.reasons
@@ -236,17 +152,17 @@ class BotApp:
         if cand.reasons:
             cand.log.final, cand.log.reasons = "NO TRADE", cand.reasons
 
-    async def emit_signal(self, cand, ai):
+    async def emit_signal(self, cand):
         b, ctx, plan = cand.best, cand.ctx, cand.best.plan
         prob_txt = cand.prob.text() if (cand.prob and cand.prob.sufficient) else "غير كافٍ (لا توجد عينة تاريخية كافية)"
-        text = format_signal(plan, b.name, ctx.session["label"], cand.confluence, prob_txt, T.strategy_reason_ar(b.reason) + f" | رأي الذكاء الاصطناعي: {ai.reason}")
+        text = format_signal(plan, b.name, ctx.session["label"], cand.confluence, prob_txt, T.strategy_reason_ar(b.reason))
         sent = True
         if self.tg is not None and self.cfg.get("mode") != "paper":
             res = await asyncio.to_thread(self.tg.send_signal, text)
             sent = bool(res)
             if sent:
                 try:
-                    png = getattr(cand, "png", None) or await asyncio.to_thread(render_chart, ctx, plan, self.cfg.get("telegram.chart_tf", "5m"), int(self.cfg.get("telegram.chart_bars", 100)))
+                    png = await asyncio.to_thread(render_chart, ctx, plan, self.cfg.get("telegram.chart_tf", "5m"), int(self.cfg.get("telegram.chart_bars", 100)))
                     await asyncio.to_thread(self.tg.send_signal_photo, png, f"{T.DIR[plan.direction]} — {T.STRATEGY.get(b.name, b.name)}")
                 except Exception:
                     log.exception("فشل رسم الشارت (الإشارة أُرسلت فعلًا)")
@@ -260,7 +176,7 @@ class BotApp:
             timestamp=ctx.ts.isoformat(), symbol=self.cfg.get("symbol", "XAUUSD"), direction=plan.direction, entry=plan.entry, sl=plan.sl,
             tp1=plan.tp1, tp2=plan.tp2, strategy=b.name, session=ctx.session["label"], score=cand.confluence,
             historical_probability=(cand.prob.win_rate if cand.prob and cand.prob.sufficient else None),
-            prob_n=(cand.prob.n if cand.prob else 0), ai_decision=ai.decision, ai_reason=ai.reason, risk_level=cand.risk_level,
+            prob_n=(cand.prob.n if cand.prob else 0), risk_level=cand.risk_level,
             reason=b.reason, fingerprint=cand.fp, rr1=plan.rr1, rr2=plan.rr2)
         self.tracker.invalidate()
         log.info("تم تسجيل الإشارة #%d", sid)
@@ -332,13 +248,13 @@ class BotApp:
         else:
             self.live = self.live_factory(self.ticks.on_tick, self.ticks.set_connected)
         jobs = [("السعر اللحظي", self.live.run), ("البيانات التاريخية", self.load_history), ("التحليل", self.analysis_loop),
-                ("الإرسال", self.sender), ("الصيانة والأخبار", self.housekeeping), ("فحص الصحة", self.health_server),
+                ("الإرسال", self.sender), ("الصيانة", self.housekeeping), ("فحص الصحة", self.health_server),
                 ("keep-alive", self.keepalive)]
         if self.cmd:
             jobs.append(("أوامر تيليجرام", self.cmd.run))
         if self.tg and self.cfg.get("mode") != "paper":
             self.notify_q.put_nowait("🤖 تم تشغيل بوت الذهب.\n«لا صفقة» نتيجة صحيحة؛ لن تصلك إشارة إلا إذا اتفقت كل الفلاتر.\n"
-                                     "اكتب لي أي سؤال بالعربي (سعر، أخبار، شارت...) أو /status لمعرفة الحالة.")
+                                     "استخدم الأزرار السفلية أو /status لمعرفة الحالة.")
         self._tasks = [asyncio.create_task(self._supervise(n, f)) for n, f in jobs]
         try:
             await asyncio.gather(*self._tasks)

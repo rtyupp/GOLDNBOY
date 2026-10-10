@@ -7,7 +7,6 @@ import pandas as pd
 
 from goldbot.analysis.indicators import add_indicators
 from goldbot.analysis import structure as st, liquidity as lq, zones as zn, sessions as ss, levels as lv
-from goldbot.analysis.news import NewsStatus
 
 ANALYZED = ["1m", "5m", "15m", "1H", "4H"]
 
@@ -49,7 +48,6 @@ class Ctx:
     levels: Dict[str, float]
     session: dict
     mtf: dict
-    news: NewsStatus
     atr: float                          # reference ATR (15m)
     regime: str
     sessions_cfg: dict
@@ -108,7 +106,7 @@ class Analyzer:
         return state
 
     def analyze(self, frames: Dict[str, pd.DataFrame], bid: float, ask: float, as_of: pd.Timestamp,
-                news: NewsStatus) -> tuple[Optional[Ctx], str]:
+                news=None) -> tuple[Optional[Ctx], str]:
         ind = {tf: self.indicators(tf, frames[tf]) for tf in ["1m", "5m", "15m", "30m", "1H", "4H", "1D"] if tf in frames}
         for tf in ANALYZED:
             if tf not in ind or len(ind[tf]) < 60:
@@ -129,7 +127,7 @@ class Analyzer:
         sess = ss.session_info(ind["5m"], as_of, self.sessions, int(self.cfg.get("sessions_or_minutes", 30)), completed)
         mtf = mtf_analysis(states)
         regime = states["1H"].trend
-        ctx = Ctx(as_of, bid, ask, ask - bid if ask >= bid else None, states, extra, sess, mtf, news,
+        ctx = Ctx(as_of, bid, ask, ask - bid if ask >= bid else None, states, extra, sess, mtf,
                   states["15m"].atr, regime, self.sessions, frames=ind)
         return ctx, "OK"
 

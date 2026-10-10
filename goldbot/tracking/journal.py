@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS signals(
   timestamp TEXT NOT NULL, symbol TEXT, direction TEXT,
   entry REAL, sl REAL, tp1 REAL, tp2 REAL, sl_current REAL,
   strategy TEXT, session TEXT, score REAL, historical_probability REAL, prob_n INTEGER,
-  ai_decision TEXT, ai_reason TEXT, risk_level TEXT, reason TEXT,
+risk_level TEXT, reason TEXT,
   status TEXT DEFAULT 'OPEN',            -- OPEN | TP1 | CLOSED
   result TEXT, r REAL, duration_min REAL, closed_ts TEXT, tp1_ts TEXT,
   fingerprint TEXT, rr1 REAL, rr2 REAL
@@ -43,7 +43,7 @@ class Journal:
     # ---------------- signals ----------------
     def add_signal(self, **k) -> int:
         cols = ["timestamp", "symbol", "direction", "entry", "sl", "tp1", "tp2", "strategy", "session", "score",
-                "historical_probability", "prob_n", "ai_decision", "ai_reason", "risk_level", "reason",
+                "historical_probability", "prob_n", "risk_level", "reason",
                 "fingerprint", "rr1", "rr2"]
         vals = [k.get(c) for c in cols]
         vals[cols.index("fingerprint")] = json.dumps(k.get("fingerprint") or {})

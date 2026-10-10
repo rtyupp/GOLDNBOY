@@ -82,6 +82,5 @@ class RiskEngine:
         pts = 0
         pts += 2 if plan.risk > 2.2 * atr else (1 if plan.risk > 1.5 * atr else 0)
         pts += 2 if (ctx.spread or 0) > 0.08 * plan.risk else 0
-        pts += 1 if ctx.news.state != "CLEAR" else 0
         pts += 1 if ctx.mtf["bias"] in ("conflict", "neutral") else 0
         return "High" if pts >= 3 else ("Medium" if pts >= 1 else "Low")
