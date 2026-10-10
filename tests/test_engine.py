@@ -137,9 +137,20 @@ class TestGates(unittest.TestCase):
     def test_low_confluence_and_unavailable_probability(self):
         class B: signal = "BUY"
         class P: sufficient, n = False, 3
-        r = no_trade.setup_gates(cfg(), B(), 55, P())
+        r = no_trade.setup_gates(cfg(probability__block_if_insufficient=True), B(), 50, P())
         self.assertTrue(any(x.startswith("LOW_CONFLUENCE") for x in r))
         self.assertTrue(any(x.startswith("PROBABILITY_UNAVAILABLE") for x in r))
+
+    def test_insufficient_probability_does_not_block_by_default(self):
+        class B: signal = "BUY"
+        class P: sufficient, n = False, 3
+        self.assertEqual(no_trade.setup_gates(cfg(), B(), 65, P()), [])
+
+    def test_sufficient_but_weak_probability_still_blocks(self):
+        class B: signal = "BUY"
+        class P: sufficient, n, win_rate, avg_r = True, 50, 0.30, -0.2
+        r = no_trade.setup_gates(cfg(), B(), 65, P())
+        self.assertTrue(any(x.startswith("WEAK_PROBABILITY") for x in r))
 
 
 class TestTelegram(unittest.TestCase):

@@ -60,22 +60,23 @@ sessions:                   # ساعات UTC [بداية، نهاية). لا ي�
 sessions_or_minutes: 30
 
 filters:
-  min_efficiency_ratio: 0.12
+  min_efficiency_ratio: 0.08     # كان 0.12: يقلّل حجب السوق الهادئ
   allow_off_hours: false
 
 strategies:
   enabled: [trend_pullback, liquidity_sweep, breakout, reversal, vwap, smc_ote_fvg, smc_sweep_mss_fvg]   # آخر اثنتين: SMC (OTE+FVG) و(Sweep→MSS→FVG)
-  min_score: 60
+  min_score: 55
 
 confluence:
-  min_score: 70
+  min_score: 60                  # كان 70
   conflict_margin: 10
 
 probability:
   min_samples: 30           # أقل من هذا = «غير كافٍ» ولا تظهر نسبة
   min_win_rate: 0.50
   min_avg_r: 0.0
-  block_if_insufficient: true   # شغّل أولًا: python -m goldbot backtest --tf all --store
+  block_if_insufficient: false  # كان true: كان يحجب كل إشارة حتى يوجد 30 صفقة تاريخية مشابهة (السجل يُمسح على Render المجاني).
+                                # الآن: إن وُجدت عينة كافية وكانت ضعيفة تُحجب، وإن لم توجد تمر الإشارة وتُكتب «غير كافٍ».
 
 risk:
   sl_buffer_atr: 0.25
@@ -89,7 +90,7 @@ risk:
   tp_buffer_atr: 0.1
 
 signals:
-  cooldown_min: 30
+  cooldown_min: 15              # كان 30
   max_open_trades: 1
 
 tracking:

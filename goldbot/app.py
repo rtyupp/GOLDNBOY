@@ -252,7 +252,7 @@ class BotApp:
         if self.cmd:
             jobs.append(("أوامر تيليجرام", self.cmd.run))
         if self.tg and self.cfg.get("mode") != "paper":
-            self.notify_q.put_nowait("🤖 تم تشغيل بوت GOLDNBOY.\n«لا صفقة» نتيجة صحيحة؛ لن تصلك إشارة إلا إذا اتفقت كل الفلاتر.\n"
+            self.notify_q.put_nowait("🤖 تم تشغيل بوت GOLDNBOY.\nأحلل السوق كل دقيقة، وسترسل لك الإشارة فور اكتمال شروطها.\n"
                                      "استخدم الأزرار بالأسفل أو اكتب /start.")
         self._tasks = [asyncio.create_task(self._supervise(n, f)) for n, f in jobs]
         try:
