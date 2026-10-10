@@ -33,7 +33,10 @@ def render_chart(ctx, plan=None, tf: str = "5m", bars: int = 100, title: str = "
     lo_y, hi_y = float(l.min()), float(h.max())
     # supply / demand zones (best scored, still inside view)
     for z in sorted(st.zones, key=lambda z: -z.score)[:4]:
-        zi = z.idx - off
+        try:
+            zi = st.df.index.get_loc(z.ts) - off      # match by timestamp (z.idx is relative to the last 250 bars only)
+        except KeyError:
+            continue
         if z.top < lo_y - 5 or z.bottom > hi_y + 5:
             continue
         col = UP if z.direction == "bull" else DN

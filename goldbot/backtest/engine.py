@@ -3,7 +3,8 @@
  - Analysis at time t only sees candles CLOSED at t (no future data).
  - Indicators are causal; structure uses confirmed pivots only.
  - Trade outcome is simulated on 1m high/low AFTER the signal; SL is checked before TP inside a bar (conservative).
- - Fixed assumed spread (history has no bid/ask). No historical news calendar => news filter is NOT applied.
+ - تكاليف واقعية: السبريد الثابت (التاريخ بلا bid/ask) + انزلاق سعري عند الدخول (backtest.slippage_entry)
+   + انزلاق إضافي عند ضرب وقف الخسارة (backtest.slippage_stop). أهداف TP أوامر Limit فلا انزلاق عليها.
  - Probability engine is NOT used inside the backtest (it would leak the test into itself).
 Results are an estimate of the past, not a guarantee for the future.
 """
@@ -15,27 +16,29 @@ import numpy as np
 import pandas as pd
 
 from goldbot.analysis.indicators import add_indicators
-from goldbot.analysis.news import NewsStatus
 from goldbot.analysis.sessions import session_label
 from goldbot.core.timeframes import resample_ohlcv, closed_only, ALL_TFS, TF_MINUTES
 from goldbot.engine.confluence import confluence
 from goldbot.engine.pipeline import Pipeline
-from goldbot.ml.model import features as ml_features
 
 log = logging.getLogger("backtest")
 
 
-def simulate_trade(plan, t0: pd.Timestamp, arr: dict, partial: float, spread: float, max_minutes: int):
-    """Walk 1m bars starting at t0. Returns (result, r, duration_min, close_ts)."""
+def simulate_trade(plan, t0: pd.Timestamp, arr: dict, partial: float, spread: float, max_minutes: int,
+                   slip_entry: float = 0.0, slip_stop: float = 0.0):
+    """Walk 1m bars starting at t0. Returns (result, r, duration_min, close_ts).
+    R تُقاس بالنسبة للمخاطرة المخططة. slip_entry: الدخول أسوأ بهذا القدر. slip_stop: الوقف يُنفَّذ أسوأ بهذا القدر."""
     idx = arr["index"]
     i0 = int(idx.searchsorted(t0, side="left"))
     buy = plan.direction == "BUY"
     sl_cur, state = plan.sl, "OPEN"
     half = spread / 2.0
     risk = plan.risk
+    se, ss_ = slip_entry / risk, slip_stop / risk
     hi, lo, cl = arr["high"], arr["low"], arr["close"]
     n = len(idx)
     end = min(n, i0 + max_minutes)
+    r_tp1, r_tp2 = plan.rr1 - se, plan.rr2 - se
     for i in range(i0, end):
         # bid (for longs) / ask (for shorts) is the price we would close at
         worst = lo[i] - half if buy else hi[i] + half          # adverse extreme
@@ -47,22 +50,20 @@ def simulate_trade(plan, t0: pd.Timestamp, arr: dict, partial: float, spread: fl
         ts = idx[i] + pd.Timedelta(minutes=1)
         if state == "OPEN":
             if sl_hit:
-                return "SL", -1.0, dur, ts
+                return "SL", -(1.0 + se + ss_), dur, ts
             if tp2_hit:
-                return "TP2", partial * plan.rr1 + (1 - partial) * plan.rr2, dur, ts
+                return "TP2", partial * r_tp1 + (1 - partial) * r_tp2, dur, ts
             if tp1_hit:
                 state, sl_cur = "TP1", plan.entry
-                if (lo[i] - half <= sl_cur) if buy else (hi[i] + half >= sl_cur):
-                    pass          # BE touched in same bar after TP1: resolved on next bar to stay conservative-neutral
         else:
             if sl_hit:
-                return "TP1_BE", partial * plan.rr1, dur, ts
+                return "TP1_BE", partial * r_tp1 + (1 - partial) * (-(se + ss_)), dur, ts
             if tp2_hit:
-                return "TP2", partial * plan.rr1 + (1 - partial) * plan.rr2, dur, ts
+                return "TP2", partial * r_tp1 + (1 - partial) * r_tp2, dur, ts
     last = min(end, n) - 1
     px = cl[last] - half if buy else cl[last] + half
-    move = (px - plan.entry) if buy else (plan.entry - px)
-    r = move / risk if state == "OPEN" else partial * plan.rr1 + (1 - partial) * move / risk
+    move = ((px - plan.entry) if buy else (plan.entry - px)) / risk - se - ss_
+    r = move if state == "OPEN" else partial * r_tp1 + (1 - partial) * move
     return "EXPIRED", float(r), last - i0 + 1, idx[last] + pd.Timedelta(minutes=1)
 
 
@@ -100,6 +101,8 @@ def split_report(df: pd.DataFrame, frac: float = 0.7) -> dict:
 def run_backtest(base: pd.DataFrame, cfg, eval_tf: str = "5m", step: int = 1, max_evals: Optional[int] = None,
                  warmup_days: int = 12, only: Optional[List[str]] = None, progress=None) -> dict:
     spread = float(cfg.get("backtest.spread", 0.3))
+    slip_entry = float(cfg.get("backtest.slippage_entry", 0.0))
+    slip_stop = float(cfg.get("backtest.slippage_stop", 0.0))
     partial = float(cfg.get("tracking.tp1_partial_pct", 0.5))
     max_minutes = int(cfg.get("tracking.max_trade_minutes", 1440))
     min_conf = float(cfg.get("confluence.min_score", 70))
@@ -117,7 +120,6 @@ def run_backtest(base: pd.DataFrame, cfg, eval_tf: str = "5m", step: int = 1, ma
         ev = ev.iloc[-max_evals:]
     names = [s.label for s in pipe.strategies]
     books: Dict[str, dict] = {n: {"busy": pd.Timestamp(0, tz="UTC"), "trades": []} for n in names + ["ALL"]}
-    clear = NewsStatus("CLEAR")
     total = len(ev)
     for k, (_, row) in enumerate(ev.iterrows()):
         as_of = row["close_time"]
@@ -125,7 +127,7 @@ def run_backtest(base: pd.DataFrame, cfg, eval_tf: str = "5m", step: int = 1, ma
             continue
         frames = {tf: closed_only(ind[tf], as_of) for tf in ind}
         px = float(frames["1m"]["close"].iloc[-1]) if len(frames["1m"]) else float(row["close"])
-        cand = pipe.prepare(frames, px - spread / 2, px + spread / 2, as_of, True, "OK", use_probability=False, news_status=clear)
+        cand = pipe.prepare(frames, px - spread / 2, px + spread / 2, as_of, True, "OK", use_probability=False)
         if progress and k % 500 == 0:
             progress(k, total)
         if cand.ctx is None or cand.global_reasons:
@@ -140,10 +142,11 @@ def run_backtest(base: pd.DataFrame, cfg, eval_tf: str = "5m", step: int = 1, ma
                 confs[d] = confluence(ctx, d)
             if confs[d][0] < min_conf:
                 continue
-            _record(books[r.name], r, ctx, confs[d][0], as_of, arr, partial, spread, max_minutes, sessions, eval_tf)
+            _record(books[r.name], r, ctx, confs[d][0], as_of, arr, partial, spread, max_minutes, sessions, eval_tf, slip_entry, slip_stop)
         if cand.tradable and as_of >= books["ALL"]["busy"]:
-            _record(books["ALL"], cand.best, ctx, cand.confluence, as_of, arr, partial, spread, max_minutes, sessions, eval_tf)
-    out = {"eval_tf": eval_tf, "evals": total, "spread_assumed": spread, "strategies": {}, "books": {}}
+            _record(books["ALL"], cand.best, ctx, cand.confluence, as_of, arr, partial, spread, max_minutes, sessions, eval_tf, slip_entry, slip_stop)
+    out = {"eval_tf": eval_tf, "evals": total, "spread_assumed": spread, "slippage_entry": slip_entry, "slippage_stop": slip_stop,
+           "strategies": {}, "books": {}}
     for n, b in books.items():
         df = pd.DataFrame(b["trades"])
         b["df"] = df
@@ -160,14 +163,14 @@ def run_backtest(base: pd.DataFrame, cfg, eval_tf: str = "5m", step: int = 1, ma
     return out
 
 
-def _record(book, res, ctx, conf, as_of, arr, partial, spread, max_minutes, sessions, eval_tf):
+def _record(book, res, ctx, conf, as_of, arr, partial, spread, max_minutes, sessions, eval_tf, slip_entry=0.0, slip_stop=0.0):
     plan = res.plan
-    outcome, r, dur, close_ts = simulate_trade(plan, as_of, arr, partial, spread, max_minutes)
+    outcome, r, dur, close_ts = simulate_trade(plan, as_of, arr, partial, spread, max_minutes, slip_entry, slip_stop)
     book["busy"] = close_ts
     from goldbot.engine.probability import fingerprint
     fp = fingerprint(ctx, res)
     fp.update(ts=as_of.isoformat(), tf=eval_tf, r=float(r), outcome=outcome, score=float(conf),
-              duration_min=float(dur), features=ml_features(ctx, res, conf))
+              duration_min=float(dur))
     book["trades"].append(fp)
 
 
@@ -180,7 +183,7 @@ def save_report(result: dict, out_dir: str, tag: str = "") -> str:
         json.dump(summary, f, indent=2, default=str)
     for n, df in result["books"].items():
         if not df.empty:
-            df.drop(columns=["features"], errors="ignore").to_csv(os.path.join(out_dir, f"trades_{tf}_{n.replace(' ', '_')}{tag}.csv"), index=False)
+            df.to_csv(os.path.join(out_dir, f"trades_{tf}_{n.replace(' ', '_')}{tag}.csv"), index=False)
     return path
 
 

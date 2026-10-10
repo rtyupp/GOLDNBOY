@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS signals(
   timestamp TEXT NOT NULL, symbol TEXT, direction TEXT,
   entry REAL, sl REAL, tp1 REAL, tp2 REAL, sl_current REAL,
   strategy TEXT, session TEXT, score REAL, historical_probability REAL, prob_n INTEGER,
-  ai_decision TEXT, ai_reason TEXT, risk_level TEXT, reason TEXT,
+  risk_level TEXT, reason TEXT,
   status TEXT DEFAULT 'OPEN',            -- OPEN | TP1 | CLOSED
   result TEXT, r REAL, duration_min REAL, closed_ts TEXT, tp1_ts TEXT,
   fingerprint TEXT, rr1 REAL, rr2 REAL
@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS history_trades(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   source TEXT, ts TEXT, tf TEXT, setup TEXT, direction TEXT, session TEXT, htf_bias TEXT,
   structure TEXT, atr_bucket TEXT, rsi_bucket TEXT, liquidity TEXT, regime TEXT,
-  r REAL, outcome TEXT, score REAL, duration_min REAL, features TEXT
+  r REAL, outcome TEXT, score REAL, duration_min REAL
 );
 CREATE INDEX IF NOT EXISTS idx_ht ON history_trades(setup, direction);
 """
@@ -43,7 +43,7 @@ class Journal:
     # ---------------- signals ----------------
     def add_signal(self, **k) -> int:
         cols = ["timestamp", "symbol", "direction", "entry", "sl", "tp1", "tp2", "strategy", "session", "score",
-                "historical_probability", "prob_n", "ai_decision", "ai_reason", "risk_level", "reason",
+                "historical_probability", "prob_n", "risk_level", "reason",
                 "fingerprint", "rr1", "rr2"]
         vals = [k.get(c) for c in cols]
         vals[cols.index("fingerprint")] = json.dumps(k.get("fingerprint") or {})
@@ -102,10 +102,10 @@ class Journal:
     def add_history(self, rows: List[dict], source: str):
         with self.lock:
             self.db.executemany(
-                "INSERT INTO history_trades(source,ts,tf,setup,direction,session,htf_bias,structure,atr_bucket,rsi_bucket,liquidity,regime,r,outcome,score,duration_min,features) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO history_trades(source,ts,tf,setup,direction,session,htf_bias,structure,atr_bucket,rsi_bucket,liquidity,regime,r,outcome,score,duration_min) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 [(source, str(r["ts"]), r.get("tf"), r["setup"], r["direction"], r["session"], r["htf_bias"], r["structure"],
                   r["atr_bucket"], r["rsi_bucket"], r["liquidity"], r["regime"], float(r["r"]), r["outcome"],
-                  r.get("score"), r.get("duration_min"), json.dumps(r.get("features", {}))) for r in rows])
+                  r.get("score"), r.get("duration_min")) for r in rows])
             self.db.commit()
 
     def clear_history(self, source: str, tf: Optional[str] = None):

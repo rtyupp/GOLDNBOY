@@ -3,10 +3,6 @@ numpy>=1.26,<3
 requests>=2.31
 PyYAML>=6.0
 matplotlib>=3.8
-scikit-learn>=1.4
 ta>=0.11.0
 # optional (only if you want them):
-# lightgbm>=4.3        # ML gate uses LightGBM > XGBoost > RandomForest, whichever is installed
-# xgboost>=2.0
 # vectorbt>=0.26       # extra cross-check of backtests (goldbot.backtest.engine.vectorbt_cross_check)
-# TA-Lib               # only if an indicator is missing from `ta` (needs the C library)

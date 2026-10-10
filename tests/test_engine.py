@@ -5,7 +5,6 @@ from goldbot.models import Tick, RiskPlan
 from goldbot.tracking.journal import Journal
 from goldbot.tracking.tracker import TradeTracker
 from goldbot.engine.probability import ProbabilityEngine, wilson
-from goldbot.ai.gemini_layer import parse_decision, GeminiLayer
 from goldbot.engine import no_trade
 from goldbot.notify.telegram import CommandBot, format_signal
 from goldbot.engine.risk import RiskEngine
@@ -20,8 +19,8 @@ def add(j, direction="BUY", entry=2650.0, sl=2645.0, rr1=1.2, rr2=2.4, ts="2026-
     risk = abs(entry - sl)
     return j.add_signal(timestamp=ts, symbol="XAUUSD", direction=direction, entry=entry, sl=sl,
                         tp1=entry + s * rr1 * risk, tp2=entry + s * rr2 * risk, strategy="Liquidity Sweep",
-                        session="New York", score=80, historical_probability=None, prob_n=0, ai_decision=direction,
-                        ai_reason="ok", risk_level="Low", reason="x", fingerprint={"setup": "Liquidity Sweep", "direction": direction,
+                        session="New York", score=80, historical_probability=None, prob_n=0,
+                        risk_level="Low", reason="x", fingerprint={"setup": "Liquidity Sweep", "direction": direction,
                         "session": "New York", "htf_bias": "bull", "structure": "BULLISH/BOS", "atr_bucket": "mid", "rsi_bucket": "50-65",
                         "liquidity": "sweep", "regime": "BULLISH"}, rr1=rr1, rr2=rr2)
 
@@ -130,40 +129,10 @@ class TestProbability(unittest.TestCase):
         self.assertLess(lo, 0.6)               # 5/5 must NOT look like certainty
 
 
-class TestGemini(unittest.IsolatedAsyncioTestCase):
-    def test_parse(self):
-        self.assertEqual(parse_decision('{"decision":"BUY","reason":"ok"}').decision, "BUY")
-        self.assertEqual(parse_decision('```json\n{"decision":"NO TRADE","reason":"x"}\n```').decision, "NO TRADE")
-        d = parse_decision("I think maybe buy")
-        self.assertEqual((d.decision, d.ok), ("NO TRADE", False))
-
-    async def test_adapter_is_used_and_fail_closed(self):
-        c = cfg(); g = GeminiLayer(c)
-        g.adapter = lambda prompt: '{"decision":"SELL","reason":"fine"}'
-        self.assertEqual((await g.decide("card", "SELL")).decision, "SELL")
-        async def boom(prompt):
-            raise RuntimeError("quota")
-        g.adapter = boom
-        d = await g.decide("card", "SELL")
-        self.assertEqual(d.decision, "NO TRADE")
-        g.on_error = "pass"
-        self.assertEqual((await g.decide("card", "SELL")).decision, "SELL")
-
-    async def test_disabled_passthrough(self):
-        g = GeminiLayer(cfg(ai__enabled=False))
-        self.assertEqual((await g.decide("c", "BUY")).decision, "BUY")
-
-
 class TestGates(unittest.TestCase):
     def test_data_failures_are_no_trade(self):
         for why in ("STALE_DATA(30s>20s)", "WS_DISCONNECTED", "NO_TICK_YET"):
             self.assertEqual(no_trade.global_gates(cfg(), None, False, why), [why])
-
-    def test_ai_rejection_blocks(self):
-        class B: signal = "BUY"
-        class A: decision, reason = "NO TRADE", "contradiction"
-        r = no_trade.setup_gates(cfg(), B(), 90, None, A())
-        self.assertTrue(r and r[0].startswith("AI_REJECTED"))
 
     def test_low_confluence_and_unavailable_probability(self):
         class B: signal = "BUY"

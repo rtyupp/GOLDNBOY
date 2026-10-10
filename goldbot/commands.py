@@ -11,18 +11,15 @@ def _age(a):
 
 def build_handlers(app) -> dict:
     def help_(args):
-        return ("الأوامر المتاحة:\n/status  حالة النظام\n/price  السعر اللحظي\n/analysis  التحليل الحالي\n/signal  آخر إعداد تم تقييمه\n"
-                "/stats  الإحصائيات\n/history  آخر الإشارات\n/last  آخر إشارة\n/market  نظرة متعددة الفريمات\n"
-                "/session  الجلسة الحالية\n/news  الأخبار القادمة\n/addnews 2026-10-14 12:30 CPI  إضافة خبر يدويًا (UTC)\n"
-                "/train  إعادة بناء السجل التاريخي وتدريب التعلم الآلي\n/id  رقم حسابك\n\nأو اكتب لي أي سؤال بالعربي، وتقدر ترسل صورة شارت لأحللها.")
+        return ("استخدم الأزرار بالأسفل، أو الأوامر:\n/start  القائمة والترحيب\n/price  السعر اللحظي\n/analysis  التحليل الحالي\n"
+                "/signal  آخر إعداد تم تقييمه\n/market  نظرة متعددة الفريمات\n/stats  الإحصائيات\n/history  آخر الإشارات\n"
+                "/last  آخر إشارة\n/session  الجلسة الحالية\n/status  حالة النظام\n/train  إعادة بناء السجل التاريخي\n/id  رقم حسابك")
 
     def status(args):
         t = app.ticks
         fresh, why = t.check_fresh()
         lc = app.recorder.last
         op = app.journal.open_trades()
-        ml = app.ml
-        n_ev = len(app.news.events)
         min_rows = int(app.cfg.get("data.min_history_rows", 14400))
         if app.md.history_rows >= min_rows:
             hist = f"سليمة ({app.md.history_rows} شمعة)"
@@ -39,10 +36,7 @@ def build_handlers(app) -> dict:
             f"السعر اللحظي: {'حديث ✅' if fresh else 'غير صالح ❌ (' + T.reason_ar(why) + ')'}   عمر آخر تحديث: {_age(t.age_sec())}",
             f"الشموع: {app.md.summary()}",
             f"البيانات التاريخية: {hist}",
-            f"تقويم الأخبار: {n_ev} حدث مهم — المصدر: {app.news.source}" + (f"  آخر تحديث ناجح: {app.news.last_ok:%m-%d %H:%M} UTC" if app.news.last_ok is not None else "")
-            + ("  ⚠️ لا توجد بيانات" if n_ev == 0 else "") + (f"\n  ⚠️ فشل آخر جلب: {app.news.last_error}" if app.news.last_error else ""),
-            f"الوضع: {'حقيقي' if app.cfg.get('mode') == 'live' else 'تجريبي (بدون إرسال)'}   الذكاء الاصطناعي: {'مفعّل (' + app.gemini.model + ')' if app.gemini.enabled else 'معطّل'}",
-            (ml.describe() if ml else "التعلم الآلي: معطّل في الإعدادات"),
+            f"الوضع: {'حقيقي' if app.cfg.get('mode') == 'live' else 'تجريبي (بدون إرسال)'}   الاستراتيجيات: {len(app.pipeline.strategies)}",
             f"التهيئة الذاتية: {'قيد التنفيذ ⏳' if app.bootstrap.running else app.bootstrap.last_summary}   سجل الاحتمال: {app.bootstrap.backtest_trades()} صفقة",
             f"وجهة الإشارات: {({'private': 'المحادثة الخاصة', 'channel': 'القناة', 'both': 'الخاص والقناة'}).get(app.tg.target if app.tg else '', 'لا يوجد')}",
             f"صفقات مفتوحة: {len(op)}   مدة التشغيل: {(time.time() - app.started) / 3600:.1f} ساعة",
@@ -116,7 +110,7 @@ def build_handlers(app) -> dict:
         prob = f"{r['historical_probability']:.1%} (عينة {r['prob_n']})" if r['historical_probability'] is not None else "غير متاح"
         return (f"#{r['id']} {T.DIR[r['direction']]} — {T.STRATEGY.get(r['strategy'], r['strategy'])} ({T.SESSION.get(r['session'], r['session'])})\n{r['timestamp']}\n"
                 f"الدخول {r['entry']:.2f}  وقف الخسارة {r['sl']:.2f}  الهدف1 {r['tp1']:.2f}  الهدف2 {r['tp2']:.2f}\n"
-                f"الدرجة {r['score']:.0f}   الاحتمال التاريخي {prob}\nقرار الذكاء الاصطناعي: {T.DIR.get(r['ai_decision'], r['ai_decision'])} — {r['ai_reason']}\n"
+                f"الدرجة {r['score']:.0f}   الاحتمال التاريخي {prob}\n"
                 f"الحالة: {T.RESULT.get(r['result'] or r['status'], r['result'] or r['status'])}" + ("" if r['r'] is None else f"  {r['r']:+.2f}R"))
 
     def market(args):
@@ -143,29 +137,6 @@ def build_handlers(app) -> dict:
         return (f"الجلسة: {T.SESSION.get(s['label'], s['label'])}\nالأعلى {s['high']}   الأدنى {s['low']}   المدى {None if s['range'] is None else round(s['range'], 2)}\n"
                 f"النطاق الافتتاحي: {orr}\nالاختراق: {bo}")
 
-    def news(args):
-        now = pd.Timestamp.now(tz="UTC")
-        st = app.news.status(now)
-        lines = [f"حالة الأخبار: {T.NEWS_STATE[st.state]}" + (f" ({st.event})" if st.event else ""),
-                 f"المصدر: {app.news.source}" + (f" — آخر تحديث {app.news.last_ok:%m-%d %H:%M} UTC" if app.news.last_ok is not None else "")]
-        ev = app.news.next_events_full(now, 8)
-        for e in ev:
-            extra = (f"  توقع {e['forecast']}" if e["forecast"] else "") + (f"  سابق {e['previous']}" if e["previous"] else "")
-            lines.append(f"{e['time_utc']} UTC  {e['name']}{extra}")
-        if not ev:
-            lines.append("لا توجد أحداث مهمة قادمة في التقويم حاليًا.")
-        return "\n".join(lines)
-
-    def addnews(args):
-        if len(args) < 3:
-            return "الصيغة: /addnews 2026-10-14 12:30 CPI m/m  (الوقت بتوقيت UTC)"
-        try:
-            dt = pd.Timestamp(f"{args[0]} {args[1]}", tz="UTC")
-        except Exception:
-            return "تاريخ أو وقت غير صالح. مثال: /addnews 2026-10-14 12:30 CPI"
-        app.news.add_manual(dt, " ".join(args[2:]))
-        return f"✅ تمت إضافة الخبر: {' '.join(args[2:])} — {dt:%Y-%m-%d %H:%M} UTC. سيمنع التداول قبله {app.news.before:.0f} دقيقة وبعده {app.news.after:.0f}."
-
     def train(args):
         if app.bootstrap.running:
             return "التهيئة تعمل الآن، سأخبرك عند الانتهاء."
@@ -173,7 +144,7 @@ def build_handlers(app) -> dict:
             return "النظام لم يكتمل تشغيله بعد."
         import asyncio as _a
         _a.run_coroutine_threadsafe(app.bootstrap.run(True), app.loop)
-        return "🧠 بدأت إعادة بناء السجل التاريخي وتدريب التعلم الآلي في الخلفية (5–20 دقيقة)، وسأرسل لك النتيجة."
+        return "🧠 بدأت إعادة بناء السجل التاريخي في الخلفية (5–20 دقيقة)، وسأرسل لك النتيجة."
 
-    return {"/addnews": addnews, "/train": train, "/help": help_, "/start": help_, "/status": status, "/price": price, "/analysis": analysis, "/signal": signal,
-            "/stats": stats, "/history": history, "/last": last, "/market": market, "/session": session, "/news": news}
+    return {"/train": train, "/help": help_, "/status": status, "/price": price, "/analysis": analysis, "/signal": signal,
+            "/stats": stats, "/history": history, "/last": last, "/market": market, "/session": session}

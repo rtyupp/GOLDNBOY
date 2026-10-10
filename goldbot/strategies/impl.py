@@ -1,4 +1,4 @@
-"""Five independent strategies. Each returns Signal/Score/Entry/SL/TP1/TP2/Reason via Strategy.evaluate()."""
+"""Seven independent strategies (5 classic + 2 SMC in smc.py). Each returns Signal/Score/Entry/SL/TP1/TP2/Reason via Strategy.evaluate()."""
 from __future__ import annotations
 from typing import Optional, Tuple
 import numpy as np
@@ -194,4 +194,6 @@ class VwapStrategy(Strategy):
         return ch, inval, {"setup": "VWAP"}
 
 
-ALL = [TrendPullback, LiquiditySweep, Breakout, Reversal, VwapStrategy]
+from goldbot.strategies.smc import SmcOteFvg, SmcSweepMssFvg   # noqa: E402  (استراتيجيتا SMC)
+
+ALL = [TrendPullback, LiquiditySweep, Breakout, Reversal, VwapStrategy, SmcOteFvg, SmcSweepMssFvg]

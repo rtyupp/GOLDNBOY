@@ -1,5 +1,8 @@
 """LIVE DATA -> candles -> indicators -> structure -> liquidity -> strategies -> confluence ->
-probability -> risk -> (Gemini) -> BUY / SELL / NO TRADE.  Same code path for live and backtest."""
+historical probability -> risk -> BUY / SELL / NO TRADE.  Same code path for live and backtest.
+
+لا يوجد أي نموذج ذكاء اصطناعي أو مصدر أخبار في هذا المسار: القرار كله من الاستراتيجيات والقواعد والمخاطرة.
+"""
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
@@ -14,7 +17,6 @@ from goldbot.models import StrategyResult
 from goldbot.monitor import CycleLog
 from goldbot.strategies.impl import ALL
 from goldbot import i18n as T
-from goldbot.ml.model import features as ml_features
 
 
 @dataclass
@@ -28,9 +30,8 @@ class Candidate:
     prob: Optional[Probability] = None
     risk_level: str = "-"
     fp: dict = field(default_factory=dict)
-    reasons: List[str] = field(default_factory=list)      # gate reasons so far (empty => ready for AI)
+    reasons: List[str] = field(default_factory=list)      # gate reasons so far (empty => tradable)
     global_reasons: List[str] = field(default_factory=list)  # setup-independent gates (used by backtest)
-    png: Optional[bytes] = None                              # صورة الشارت المرسلة للمراجعة
 
     @property
     def tradable(self) -> bool:
@@ -38,21 +39,16 @@ class Candidate:
 
 
 class Pipeline:
-    def __init__(self, cfg, journal=None, news=None, ml=None, only: Optional[List[str]] = None):
+    def __init__(self, cfg, journal=None, only: Optional[List[str]] = None):
         self.cfg = cfg
         self.analyzer = Analyzer(cfg)
         self.risk = RiskEngine(cfg)
-        self.news = news
-        self.ml = ml
         self.prob_engine = ProbabilityEngine(journal, cfg) if journal is not None else None
         keys = only or cfg.get("strategies.enabled", [c.key for c in ALL])
         self.strategies = [c(cfg, self.risk) for c in ALL if c.key in keys]
 
-    # ---- stage 1..: everything except Gemini -------------------------------------------------
     def prepare(self, frames: Dict[str, pd.DataFrame], bid: float, ask: float, as_of: pd.Timestamp,
-                data_ok: bool = True, data_reason: str = "OK", use_probability: bool = True,
-                news_status=None) -> Candidate:
-        from goldbot.analysis.news import NewsStatus
+                data_ok: bool = True, data_reason: str = "OK", use_probability: bool = True) -> Candidate:
         lg = CycleLog(ts=as_of.strftime("%Y-%m-%d %H:%M UTC"))
         lg.set("DATA", "سليمة" if data_ok else f"فشل ({T.reason_ar(data_reason)})")
         cand = Candidate(None, lg)
@@ -60,9 +56,7 @@ class Pipeline:
             lg.set("CANDLES", "تم التخطي")
             cand.reasons = no_trade.global_gates(self.cfg, None, False, data_reason)
             return self._done(cand)
-        if news_status is None:
-            news_status = self.news.status(as_of) if self.news else NewsStatus("CLEAR")
-        ctx, why = self.analyzer.analyze(frames, bid, ask, as_of, news_status)
+        ctx, why = self.analyzer.analyze(frames, bid, ask, as_of)
         if ctx is None:
             lg.set("CANDLES", f"فشل ({T.reason_ar(why)})")
             cand.reasons = [why]
@@ -72,7 +66,7 @@ class Pipeline:
         lg.set("INDICATORS", "سليمة")
         t = ctx.mtf["labels"]
         lg.set("STRUCTURE", " ".join(f"{tf}={T.TREND[t[tf]]}" for tf in ("4H", "1H", "15m", "5m", "1m")) + f" | الاتجاه العام={T.TREND.get(ctx.mtf['bias'], ctx.mtf['bias'])}/{T.STRENGTH[ctx.mtf['strength']]}")
-        sw = [f"{T.SWEEP_KIND.get(s.kind, s.kind)} {'للأعلى' if s.expected == 'bull' else 'للأسفل'} ({s.pool_kind}){' مؤكد' if s.confirmed else ''}" for s in (ctx.tf['5m'].sweeps + ctx.tf['15m'].sweeps)[:3]]
+        sw = [f"{T.SWEEP_KIND.get(s.kind, s.kind)} {'للأعلى' if s.expected == 'bull' else 'للأسفل'} ({s.pool_kind}){' مؤكد' if s.confirmed else ''}" for s in (ctx.tf["5m"].sweeps + ctx.tf["15m"].sweeps)[:3]]
         lg.set("LIQUIDITY", "، ".join(sw) if sw else "لا يوجد")
         lg.extra["session"] = ctx.session["label"]
 
@@ -107,10 +101,6 @@ class Pipeline:
         lg.set("SCORE", f"{cs:.0f}/100 ({T.STRATEGY.get(best.name, best.name)}، موافقة {agree}/{len(self.strategies)} استراتيجيات)")
         # ---- probability (historical, never invented)
         cand.fp = fingerprint(ctx, best)
-        try:                                   # مؤشرات لحظة الإشارة: تُخزَّن لتدريب التعلم الآلي لاحقًا من صفقاتك الحية أيضًا
-            cand.fp["features"] = ml_features(ctx, best, cs)
-        except Exception:
-            pass
         if use_probability and self.prob_engine is not None:
             cand.prob = self.prob_engine.estimate(cand.fp, as_of)
             lg.set("PROBABILITY", cand.prob.text())
@@ -120,11 +110,6 @@ class Pipeline:
         p = best.plan
         lg.set("RISK", f"{T.RISK_LEVEL[cand.risk_level]}  دخول={p.entry} وقف={p.sl} هدف1={p.tp1} هدف2={p.tp2} RR={p.rr1}/{p.rr2}")
         reasons += no_trade.setup_gates(self.cfg, best, cs, cand.prob if use_probability else None)
-        if self.ml is not None and self.ml.active:
-            ml_p = self.ml.predict_win_prob(ctx, best, cs)
-            lg.extra["ml_prob"] = ml_p
-            if ml_p is not None and ml_p < self.cfg.get("ml.min_prob", 0.5):
-                reasons.append(f"ML_LOW({ml_p:.2f})")
         cand.reasons = reasons
         return self._done(cand)
 
@@ -132,20 +117,4 @@ class Pipeline:
         if cand.reasons:
             cand.log.final = "NO TRADE"
             cand.log.reasons = cand.reasons
-        return cand
-
-    # ---- finalize after Gemini ------------------------------------------------------------------
-    def finalize(self, cand: Candidate, ai_decision=None) -> Candidate:
-        if not cand.tradable:
-            return cand
-        if ai_decision is not None:
-            cand.log.set("AI", f"{'وافق' if ai_decision.decision == cand.best.signal else 'رفض'} ({T.DIR.get(ai_decision.decision, ai_decision.decision)}: {ai_decision.reason[:80]})")
-            cand.reasons += no_trade.setup_gates(self.cfg, cand.best, 100.0, None, ai_decision)[-1:] if ai_decision.decision != cand.best.signal else []
-        else:
-            cand.log.set("AI", "تم التخطي")
-        if cand.reasons:
-            cand.log.final = "NO TRADE"
-            cand.log.reasons = cand.reasons
-        else:
-            cand.log.final = f"{cand.best.signal} SENT"
         return cand

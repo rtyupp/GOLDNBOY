@@ -2,13 +2,65 @@
 الإشارات تذهب إلى: private = محادثتك الخاصة مع البوت (TELEGRAM_ADMIN_IDS) | channel = القناة | both = الاثنين.
 الأوامر تعمل فقط للأرقام الموجودة في TELEGRAM_ADMIN_IDS (ما عدا /id)."""
 from __future__ import annotations
-import asyncio, logging, time
+import asyncio, json, logging, re, time
 from typing import Callable, List, Optional
 import requests
 from goldbot import i18n as T
 
 log = logging.getLogger("telegram")
 API = "https://api.telegram.org/bot{token}/{method}"
+
+WELCOME = ("«ارحبو تراحيب المطر»\n\n"
+           "بوت GOLDNBOY لإشارات تداول الذهب XAUUSD، يعتمد على الأسعار اللحظية والاستراتيجيات والمؤشرات الفنية "
+           "لتحليل السوق وتحديد فرص التداول المحتملة.\n\n"
+           "by: @QUOP9")
+
+# ---- لوحة الأزرار السفلية (ReplyKeyboardMarkup). كل زر → أمر.
+BTN_MORE, BTN_BACK = "⚙️ المزيد", "🔙 القائمة الرئيسية"
+MAIN_ROWS = [
+    ["💰 السعر اللحظي", "📈 التحليل الحالي"],
+    ["🎯 آخر إعداد", "🌍 نظرة السوق"],
+    ["📊 الإحصائيات", "🧾 سجل الإشارات"],
+    [BTN_MORE],
+]
+MORE_ROWS = [
+    ["🟢 حالة النظام", "🕒 الجلسة الحالية"],
+    ["📌 آخر إشارة", "🧪 إعادة بناء السجل"],
+    ["❓ المساعدة", BTN_BACK],
+]
+BUTTON_COMMANDS = {
+    "💰 السعر اللحظي": "/price", "📈 التحليل الحالي": "/analysis", "🎯 آخر إعداد": "/signal", "🌍 نظرة السوق": "/market",
+    "📊 الإحصائيات": "/stats", "🧾 سجل الإشارات": "/history",
+    "🟢 حالة النظام": "/status", "🕒 الجلسة الحالية": "/session", "📌 آخر إشارة": "/last",
+    "🧪 إعادة بناء السجل": "/train", "❓ المساعدة": "/help",
+}
+MENUS = {"main": MAIN_ROWS, "more": MORE_ROWS}
+_NON_LETTERS = re.compile(r"[^\w\u0600-\u06FF]+", re.U)
+
+
+def _norm(label: str) -> str:
+    """يطابق نص الزر حتى لو اختلف الإيموجي أو المسافات."""
+    return _NON_LETTERS.sub("", label or "").replace("_", "")
+
+
+_BUTTON_NORM = {_norm(k): v for k, v in BUTTON_COMMANDS.items()}
+_BUTTON_NORM[_norm(BTN_MORE)] = "@more"
+_BUTTON_NORM[_norm(BTN_BACK)] = "@main"
+
+
+def reply_keyboard(menu: str = "main") -> str:
+    """JSON لـ ReplyKeyboardMarkup: تظهر مكان لوحة الكتابة، وتبقى ظاهرة (is_persistent)."""
+    return json.dumps({"keyboard": [[{"text": t} for t in row] for row in MENUS.get(menu, MAIN_ROWS)],
+                       "resize_keyboard": True, "is_persistent": True, "one_time_keyboard": False,
+                       "input_field_placeholder": "اختر من الأزرار بالأسفل 👇"}, ensure_ascii=False)
+
+
+def is_private_chat(chat_id) -> bool:
+    """القنوات والمجموعات لا تدعم ReplyKeyboard: نرسلها فقط للمحادثات الخاصة (معرّف موجب)."""
+    try:
+        return int(chat_id) > 0
+    except (TypeError, ValueError):
+        return False
 
 
 class Telegram:
@@ -47,17 +99,12 @@ class Telegram:
                 time.sleep(1.5 * (attempt + 1))
         return None
 
-    def send_message(self, chat_id, text: str):
-        import json
-        keyboard = {
-            "keyboard": [
-                [{"text": "💰 السعر اللحظي"}, {"text": "📊 حالة النظام"}],
-                [{"text": "📰 الأخبار القادمة"}, {"text": "📈 التحليل الحالي"}],
-                [{"text": "🎯 آخر إعداد"}, {"text": "❓ المساعدة"}]
-            ],
-            "resize_keyboard": True
-        }
-        r = self._call("sendMessage", chat_id=chat_id, text=text[:4000], disable_web_page_preview="true", reply_markup=json.dumps(keyboard))
+    def send_message(self, chat_id, text: str, menu: Optional[str] = None):
+        """menu=None: لا يلمس اللوحة الحالية (مثلًا رسائل الإشارات). menu='main'|'more': يعرض/يبقي اللوحة السفلية."""
+        kw = dict(chat_id=chat_id, text=text[:4000], disable_web_page_preview="true")
+        if menu and is_private_chat(chat_id):
+            kw["reply_markup"] = reply_keyboard(menu)
+        r = self._call("sendMessage", **kw)
         self.sent += 1 if r else 0
         return r
 
@@ -65,24 +112,6 @@ class Telegram:
         r = self._call("sendPhoto", chat_id=chat_id, caption=caption[:1000], files={"photo": ("chart.png", png, "image/png")}, timeout=60)
         self.sent += 1 if r else 0
         return r
-
-    def send_chat_action(self, chat_id, action: str = "typing"):
-        return self._call("sendChatAction", chat_id=chat_id, action=action, timeout=10)
-
-    def download_photo(self, message: dict) -> Optional[bytes]:
-        """يحمّل أكبر نسخة من صورة أرسلها المستخدم."""
-        photos = message.get("photo") or []
-        if not photos:
-            return None
-        fid = max(photos, key=lambda p: p.get("file_size", 0) or p.get("width", 0)).get("file_id")
-        info = self._call("getFile", file_id=fid, timeout=20)
-        if not info:
-            return None
-        try:
-            r = self.s.get(f"https://api.telegram.org/file/bot{self.token}/{info['file_path']}", timeout=40)
-            return r.content if r.status_code == 200 else None
-        except requests.RequestException:
-            return None
 
     def get_updates(self, offset: Optional[int], timeout: int = 25):
         # real long polling: Telegram holds the request up to `timeout` s; the HTTP timeout must be longer
@@ -129,36 +158,43 @@ def format_signal(plan, strategy: str, session: str, confidence: float, prob_tex
 
 
 class CommandBot:
-    """استقبال الأوامر (long polling). handlers: '/cmd' -> دالة(args) ترجع نصًا."""
+    """استقبال الأوامر والأزرار (long polling). handlers: '/cmd' -> دالة(args) ترجع نصًا."""
     PUBLIC = {"/id"}
 
     def __init__(self, tg: Telegram, handlers: dict):
         self.tg, self.handlers = tg, handlers
         self.offset: Optional[int] = None
         self._stop = False
-        self.ai = None          # async(chat_id, text, image, send_photo=) -> (نص, [صور]) تضبطها التطبيق
-        self._locks: dict = {}
+        self.menu: dict = {}            # chat -> "main" | "more" (القسم الظاهر حاليًا)
         self._tasks: set = set()
 
     def stop(self):
         self._stop = True
 
-    def handle_text(self, text: str) -> Optional[str]:
-        mapping = {
-            "💰 السعر اللحظي": "/price",
-            "📊 حالة النظام": "/status",
-            "📰 الأخبار القادمة": "/news",
-            "📈 التحليل الحالي": "/analysis",
-            "🎯 آخر إعداد": "/signal",
-            "❓ المساعدة": "/help"
-        }
+    def menu_for(self, chat) -> str:
+        return self.menu.get(chat, "main")
+
+    def handle_text(self, text: str, chat=None) -> Optional[str]:
+        """يرجع نص الرد. أزرار القوائم تغيّر self.menu[chat] وتُرجع عنوان القسم."""
         raw = (text or "").strip()
-        if raw in mapping:
-            text = mapping[raw]
-        parts = (text or "").strip().split()
-        if not parts or not parts[0].startswith("/"):
+        if not raw:
             return None
+        target = _BUTTON_NORM.get(_norm(raw))
+        if target == "@more":
+            self.menu[chat] = "more"
+            return "⚙️ المزيد — اختر من الأزرار بالأسفل."
+        if target == "@main":
+            self.menu[chat] = "main"
+            return "القائمة الرئيسية — اختر من الأزرار بالأسفل."
+        if target:
+            raw = target
+        parts = raw.split()
+        if not parts[0].startswith("/"):
+            return "اختر من الأزرار بالأسفل 👇 أو اكتب /help"
         cmd = parts[0].split("@")[0].lower()
+        if cmd == "/start":
+            self.menu[chat] = "main"
+            return WELCOME
         fn = self.handlers.get(cmd)
         if fn is None:
             return "أمر غير معروف. جرّب /help"
@@ -181,59 +217,23 @@ class CommandBot:
             return
         if self.tg.admin_ids and uid not in self.tg.admin_ids:
             return                                        # تجاهل الغرباء بصمت
-        reply = self.handle_text(text)
+        reply = self.handle_text(text, chat)
         if reply:
+            self._send(chat, reply)
+
+    def _send(self, chat, reply: str):
+        try:
+            self.tg.send_message(chat, reply, menu=self.menu_for(chat))
+        except TypeError:                                 # واجهات اختبار قديمة بلا معامل menu
             self.tg.send_message(chat, reply)
-
-    typing_interval = 4.0
-    ack_after = 8.0
-
-    async def _typing_and_ack(self, chat):
-        """يُبقي مؤشر «يكتب...» ويرسل «جارٍ التحليل» إن تأخر الرد."""
-        t0 = 0.0
-        acked = False
-        while True:
-            await asyncio.to_thread(self.tg.send_chat_action, chat)
-            await asyncio.sleep(self.typing_interval)
-            t0 += self.typing_interval
-            if t0 >= self.ack_after and not acked:
-                acked = True
-                await asyncio.to_thread(self.tg.send_message, chat, "⏳ جارٍ التحليل، لحظات...")
 
     async def handle_update(self, u: dict):
         m = u.get("message") or {}
-        uid = (m.get("from") or {}).get("id")
-        chat = (m.get("chat") or {}).get("id")
-        if uid is None or chat is None:
+        if (m.get("from") or {}).get("id") is None or (m.get("chat") or {}).get("id") is None:
             return
-        text = m.get("text") or m.get("caption") or ""
-        has_photo = bool(m.get("photo"))
-        first = (text.strip().split() or [""])[0]
-        if first.startswith("/") and not has_photo:
-            await asyncio.to_thread(self.process_update, u)
-            return
-        if self.tg.admin_ids and uid not in self.tg.admin_ids:
-            return
-        if self.ai is None or not (text.strip() or has_photo):
-            return
-        lock = self._locks.setdefault(chat, asyncio.Lock())
-        async with lock:                                   # رسائل نفس المحادثة بالترتيب، ومحادثات مختلفة بالتوازي
-            helper = asyncio.create_task(self._typing_and_ack(chat))
-            try:
-                img = await asyncio.to_thread(self.tg.download_photo, m) if has_photo else None
-
-                async def send_photo(png):
-                    await asyncio.to_thread(self.tg.send_photo, chat, png, "")
-                reply, photos = await self.ai(chat, text, img, send_photo=send_photo)
-            except Exception as e:
-                log.exception("فشل المساعد")
-                reply, photos = f"حدث خطأ غير متوقع ({type(e).__name__}). جرّب الأوامر: /status /price /analysis", []
-            finally:
-                helper.cancel()
-            if reply:
-                await asyncio.to_thread(self.tg.send_message, chat, reply)
-            for png in photos:
-                await asyncio.to_thread(self.tg.send_photo, chat, png, "")
+        if not (m.get("text") or "").strip():
+            return                                        # صور وملفات وغيرها: لا شيء
+        await asyncio.to_thread(self.process_update, u)
 
     async def _safe(self, u: dict):
         try:

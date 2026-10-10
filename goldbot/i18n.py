@@ -9,15 +9,15 @@ STRENGTH = {"STRONG": "قوي", "WEAK": "ضعيف", "NONE": "-"}
 SESSION = {"Asian": "آسيا", "London": "لندن", "New York": "نيويورك", "London/New York": "لندن/نيويورك (تداخل)",
            "Off-hours": "خارج الجلسات"}
 STRATEGY = {"Trend Pullback": "ارتداد مع الاتجاه", "Liquidity Sweep": "اصطياد السيولة", "Breakout": "الاختراق",
-            "Reversal": "الانعكاس", "VWAP": "فواب (VWAP)"}
+            "Reversal": "الانعكاس", "VWAP": "فواب (VWAP)", "SMC OTE + FVG": "OTE + فجوة FVG (SMC)",
+            "SMC Sweep-MSS-FVG": "سحب سيولة ثم MSS ثم FVG (SMC)"}
 BREAK = {"BOS": "كسر هيكل BOS", "CHoCH": "تغيّر طابع CHoCH"}
 RESULT = {"SL": "ضرب وقف الخسارة", "TP2": "حقق الهدف الثاني", "TP1_BE": "هدف أول ثم تعادل", "EXPIRED": "انتهت المدة",
           "OPEN": "مفتوحة", "TP1": "بعد الهدف الأول", "CLOSED": "مغلقة"}
-NEWS_STATE = {"CLEAR": "لا أخبار", "PRE_NEWS": "قبل خبر مهم", "POST_NEWS": "بعد خبر مهم"}
 RISK_LEVEL = {"Low": "منخفضة", "Medium": "متوسطة", "High": "مرتفعة"}
 SWEEP_KIND = {"sweep": "سحب سيولة", "failed_breakout": "اختراق فاشل"}
 STAGE = {"DATA": "البيانات", "CANDLES": "الشموع", "INDICATORS": "المؤشرات", "STRUCTURE": "الهيكل", "LIQUIDITY": "السيولة",
-         "STRATEGY": "الاستراتيجيات", "SCORE": "التقييم", "PROBABILITY": "الاحتمال التاريخي", "RISK": "المخاطرة", "AI": "الذكاء الاصطناعي"}
+         "STRATEGY": "الاستراتيجيات", "SCORE": "التقييم", "PROBABILITY": "الاحتمال التاريخي", "RISK": "المخاطرة"}
 CHECKS = {
     "HTF trend": "اتجاه الفريمات الكبيرة", "pullback to EMA": "ارتداد إلى المتوسط EMA", "VWAP": "فواب VWAP",
     "structure intact": "الهيكل سليم", "confirmation": "شمعة التأكيد", "momentum": "الزخم", "zone support": "منطقة داعمة",
@@ -27,6 +27,14 @@ CHECKS = {
     "retest holds": "إعادة اختبار ناجحة", "extreme": "تطرف سعري", "liquidity": "سيولة", "divergence": "دايفرجنس",
     "structure shift (CHoCH/BOS)": "تحول الهيكل (CHoCH/BOS)", "not against strong HTF": "ليس ضد اتجاه قوي أعلى",
     "trend": "الاتجاه", "VWAP retest": "إعادة اختبار VWAP", "15m side of EMA50": "جهة EMA50 على 15 دقيقة",
+    # ---- SMC (goldbot/strategies/smc.py)
+    "BOS/CHoCH in direction": "كسر هيكل BOS/CHoCH في الاتجاه", "impulse leg": "ساق الحركة الأساسية",
+    "price in OTE 62-79%": "السعر داخل منطقة OTE (62%-79%)", "confirmation candle": "شمعة تأكيد في الاتجاه",
+    "FVG overlaps OTE": "فجوة FVG تتقاطع مع OTE", "strict order block at OTE": "Order Block صارم داخل OTE",
+    "liquidity sweep (SMC)": "سحب سيولة قبل الدخول", "momentum (SMC)": "زخم RSI/MACD في الاتجاه",
+    "sweep confirmed": "سحب سيولة مؤكد", "MSS after sweep": "تغيّر هيكل MSS بعد السحب",
+    "FVG created by MSS": "فجوة FVG خلقها كسر الهيكل", "price inside FVG": "السعر داخل الفجوة FVG",
+    "pool quality": "مستوى سيولة قوي (جلسة/يومي)", "session active": "جلسة نشطة",
 }
 DETAIL_REPL = [("wr=", "نسبة الربح "), ("avgR=", "متوسط R "), ("n=", "العينة "), ("ER=", "كفاءة الاتجاه "),
                ("RR2=", "RR2 "), ("min", "د"), ("ATR", "ATR")]
@@ -34,12 +42,11 @@ REASONS = {
     "NO_TICK_YET": "لم يصل أي سعر لحظي بعد", "WS_DISCONNECTED": "الاتصال اللحظي (WebSocket) منقطع",
     "STALE_DATA": "بيانات السعر قديمة", "NO_QUOTE": "لا يوجد سعر Bid/Ask", "NO_CANDLES": "لا توجد شموع كافية",
     "CANDLE_GAP": "فجوة في الشموع", "INSUFFICIENT_HISTORY": "بيانات تاريخية غير كافية", "NO_ANALYSIS": "لا يوجد تحليل",
-    "NEWS_HIGH_RISK": "خبر عالي التأثير قريب (ممنوع التداول)", "NEWS_SETTLING": "انتظار استقرار السوق بعد الخبر", "NEWS_CALENDAR_UNAVAILABLE": "تقويم الأخبار غير متوفر حاليًا (لا تداول احتياطًا)",
     "SPREAD_HIGH": "السبريد مرتفع", "SPREAD_VS_RISK": "السبريد كبير مقارنة بالمخاطرة", "HTF_CONFLICT": "تعارض اتجاه الفريمات الكبيرة (4H مقابل 1H)",
     "CHOPPY_MARKET": "سوق متذبذب بلا اتجاه واضح", "OFF_HOURS": "خارج جلسات التداول", "NO_SETUP": "لا يوجد إعداد مكتمل",
     "LOW_CONFLUENCE": "تقاطع الأدلة ضعيف", "WEAK_PROBABILITY": "الاحتمال التاريخي ضعيف",
-    "PROBABILITY_UNAVAILABLE": "الاحتمال التاريخي غير متوفر (عينة غير كافية)", "AI_REJECTED": "الذكاء الاصطناعي رفض الصفقة",
-    "CONFLICTING_STRATEGIES": "استراتيجيات متعارضة (شراء مقابل بيع)", "ML_LOW": "نموذج التعلم الآلي يرى احتمالًا منخفضًا",
+    "PROBABILITY_UNAVAILABLE": "الاحتمال التاريخي غير متوفر (عينة غير كافية)",
+    "CONFLICTING_STRATEGIES": "استراتيجيات متعارضة (شراء مقابل بيع)",
     "OPEN_TRADE_EXISTS": "توجد صفقة مفتوحة", "COOLDOWN": "فترة انتظار بعد آخر إشارة",
     "TELEGRAM_SEND_FAILED": "فشل الإرسال إلى تيليجرام", "SL_ILLOGICAL": "وقف الخسارة غير منطقي",
     "SL_TOO_WIDE": "وقف الخسارة واسع جدًا", "RR_POOR": "نسبة العائد للمخاطرة ضعيفة", "RR_POOR_TARGET": "الهدف قريب من سيولة معاكسة",
@@ -53,10 +60,6 @@ def reason_ar(code: str) -> str:
     base = REASONS.get(name)
     if base is None:
         return code
-    if name in ("NEWS_HIGH_RISK", "NEWS_SETTLING") and "|" in d:
-        ev, mins = d.split("|", 1)
-        word = "بعد" if name == "NEWS_HIGH_RISK" else "قبل"
-        return f"{base}: {ev} {word} {mins} دقيقة"
     for a, b in DETAIL_REPL:
         d = d.replace(a, b)
     return f"{base} ({d})" if d else base

@@ -8,9 +8,6 @@ def cfg(**over):
     # Integration tests with FakeTG exercise the delivery path explicitly;
     # production config remains paper-by-default for safety.
     c.set("mode", "live")
-    # Unit/integration tests exercise the Gemini adapter with fake sessions;
-    # production disables the external quota by default.
-    c.set("ai.enabled", True)
     for k, v in over.items():
         c.set(k.replace("__", "."), v)
     return c
@@ -61,7 +58,7 @@ class FakeConn:
 
 class FakeTG:
     def __init__(self):
-        self.channel, self.photos, self.private = [], [], []
+        self.channel, self.photos, self.private, self.menus = [], [], [], []
         self.admin_ids = {1}
 
     target = "private"
@@ -74,6 +71,17 @@ class FakeTG:
         self.photos.append((len(png), cap))
         return True
 
-    def send_message(self, chat, text):
+    def send_message(self, chat, text, menu=None):
         self.private.append((chat, text))
+        self.menus.append(menu)
         return {"ok": 1}
+
+
+def mkapp(**over):
+    """BotApp جاهز للاختبار بمسارات مؤقتة وبدون أي شبكة."""
+    import os, tempfile
+    from goldbot.app import BotApp
+    from goldbot.providers.synthetic import SyntheticHistory
+    c = cfg(paths__journal=os.path.join(tempfile.mkdtemp(), "j.sqlite"), paths__log_dir=tempfile.mkdtemp(),
+            bootstrap__marker=os.path.join(tempfile.mkdtemp(), "b.json"), **over)
+    return c, BotApp(c, tg=FakeTG(), history_provider=SyntheticHistory())

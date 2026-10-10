@@ -65,15 +65,6 @@ class TestDukascopyBlocked(unittest.TestCase):
         self.assertEqual(d.progress[0], d.progress[1])
 
 
-class TestBuiltinNews(unittest.TestCase):
-    def test_nfp_and_fomc_with_dst(self):
-        from goldbot.analysis.news import builtin_events
-        df = builtin_events(pd.Timestamp("2026-10-09 10:40", tz="UTC"))
-        got = {r["name"].split()[0]: r["dt"] for _, r in df.iterrows()}
-        self.assertEqual(got["Non-Farm"], pd.Timestamp("2026-11-06 13:30", tz="UTC"))   # first Friday, EST (after DST ends)
-        self.assertEqual(got["FOMC"], pd.Timestamp("2026-10-28 18:00", tz="UTC"))       # 2pm EDT
-
-
 class TestFactoryIsFree(unittest.TestCase):
     def test_default_config_needs_no_keys(self):
         import os

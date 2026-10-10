@@ -5,7 +5,6 @@ from goldbot.models import RiskPlan
 from goldbot.backtest.engine import simulate_trade, metrics, run_backtest, store_probability_history, split_report
 from goldbot.providers.synthetic import make_synthetic_1m
 from goldbot.tracking.journal import Journal
-from goldbot.ml.model import MLGate
 
 
 def arr_from(rows, start="2026-06-01 10:00"):
@@ -45,6 +44,40 @@ class TestSim(unittest.TestCase):
         self.assertEqual(res[0], "EXPIRED")
 
 
+class TestSlippage(unittest.TestCase):
+    """الانزلاق السعري: الدخول أسوأ، الوقف يُنفَّذ أسوأ، أهداف Limit بلا انزلاق إضافي."""
+
+    def test_zero_slippage_matches_old_numbers(self):
+        a = arr_from([(107, 99, 106), (113, 105, 112)])
+        res = simulate_trade(BUY, T0, a, 0.5, 0.0, 100, 0.0, 0.0)
+        self.assertEqual(res[0], "TP2")
+        self.assertAlmostEqual(res[1], 0.5 * 1.2 + 0.5 * 2.4)
+
+    def test_sl_costs_more_than_one_r(self):
+        a = arr_from([(101, 94, 95)])
+        r0 = simulate_trade(BUY, T0, a, 0.5, 0.0, 100)[1]
+        r1 = simulate_trade(BUY, T0, a, 0.5, 0.0, 100, 0.5, 0.5)[1]
+        self.assertEqual(r0, -1.0)
+        self.assertAlmostEqual(r1, -(1 + 0.5 / 5 + 0.5 / 5))        # entry + stop slip، المخاطرة = 5
+
+    def test_tp2_reduced_by_entry_slippage_only(self):
+        a = arr_from([(107, 99, 106), (113, 105, 112)])
+        r0 = simulate_trade(BUY, T0, a, 0.5, 0.0, 100)[1]
+        r1 = simulate_trade(BUY, T0, a, 0.5, 0.0, 100, 0.5, 0.5)[1]
+        self.assertAlmostEqual(r0 - r1, 0.5 / 5)                    # الدخول فقط (TP أمر Limit)
+
+    def test_breakeven_exit_pays_stop_slippage(self):
+        a = arr_from([(107, 99, 106), (106, 99.5, 100)])
+        r0 = simulate_trade(BUY, T0, a, 0.5, 0.0, 100)[1]
+        r1 = simulate_trade(BUY, T0, a, 0.5, 0.0, 100, 0.2, 0.3)[1]
+        self.assertLess(r1, r0)
+
+    def test_sell_direction_symmetric(self):
+        sell = RiskPlan("SELL", 100.0, 105.0, 94.0, 88.0, 5.0, 6.0, 12.0, 1.2, 2.4)
+        a = arr_from([(106, 99, 105)])
+        self.assertAlmostEqual(simulate_trade(sell, T0, a, 0.5, 0.0, 100, 0.5, 0.5)[1], -1.2)
+
+
 class TestMetrics(unittest.TestCase):
     def test_metrics(self):
         df = pd.DataFrame({"r": [1.5, -1.0, 2.0, -1.0, -1.0], "outcome": ["TP2", "SL", "TP2", "SL", "SL"], "ts": range(5)})
@@ -62,31 +95,10 @@ class TestRun(unittest.TestCase):
         df = make_synthetic_1m(days=16, seed=11)
         res = run_backtest(df, c, "5m", warmup_days=12, max_evals=120)
         self.assertIn("strategies", res)
-        self.assertEqual(set(res["strategies"]), {"Trend Pullback", "Liquidity Sweep", "Breakout", "Reversal", "VWAP"})
+        self.assertEqual(set(res["strategies"]), {"Trend Pullback", "Liquidity Sweep", "Breakout", "Reversal", "VWAP", "SMC OTE + FVG", "SMC Sweep-MSS-FVG"})
         j = Journal(os.path.join(tempfile.mkdtemp(), "j.sqlite"))
         n = store_probability_history(j, res)
         self.assertEqual(len(j.history_trades()), n)
-
-
-class TestML(unittest.TestCase):
-    def test_refuses_without_data_and_has_no_leak_split(self):
-        c = cfg(ml__enabled=True, ml__model_path=os.path.join(tempfile.mkdtemp(), "m.pkl"))
-        g = MLGate(c)
-        rep = g.train(pd.DataFrame({"features": [], "ts": [], "r": []}))
-        self.assertFalse(rep["passed"])
-        self.assertFalse(g.active)
-
-    def test_random_labels_do_not_pass(self):
-        import json
-        rng = np.random.default_rng(1)
-        n = 600
-        rows = pd.DataFrame({"ts": pd.date_range("2026-01-01", periods=n, freq="1h", tz="UTC").astype(str),
-                             "features": [json.dumps({"a": float(rng.normal()), "b": float(rng.normal())}) for _ in range(n)],
-                             "r": rng.choice([-1.0, 1.5], n)})
-        c = cfg(ml__enabled=True, ml__model_path=os.path.join(tempfile.mkdtemp(), "m.pkl"))
-        rep = MLGate(c).train(rows)
-        self.assertFalse(rep["passed"], rep)          # noise must not be activated
-        self.assertLess(rep["train_end"], rep["test_start"])
 
 
 if __name__ == "__main__":

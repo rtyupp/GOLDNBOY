@@ -6,7 +6,6 @@ from goldbot.analysis.indicators import add_indicators, _rsi
 from goldbot.providers.synthetic import make_synthetic_1m
 from goldbot.core.market_data import MarketData
 from goldbot.analysis.analyzer import Analyzer
-from goldbot.analysis.news import NewsFilter, NewsStatus
 
 
 def zigzag(points, per=5):
@@ -122,28 +121,14 @@ class TestNoLookahead(unittest.TestCase):
         md_cut = MarketData(); md_cut.load_history(df[df.index <= t])
         a1, a2 = Analyzer(c), Analyzer(c)
         px = float(df.loc[t, "close"])
-        x1, w1 = a1.analyze(md_full.frames(as_of), px, px + .3, as_of, NewsStatus("CLEAR"))
-        x2, w2 = a2.analyze(md_cut.frames(as_of), px, px + .3, as_of, NewsStatus("CLEAR"))
+        x1, w1 = a1.analyze(md_full.frames(as_of), px, px + .3, as_of)
+        x2, w2 = a2.analyze(md_cut.frames(as_of), px, px + .3, as_of)
         self.assertEqual((w1, w2), ("OK", "OK"))
         self.assertEqual(x1.mtf["labels"], x2.mtf["labels"])
         for tf in x1.tf:
             self.assertAlmostEqual(x1.tf[tf].atr, x2.tf[tf].atr, places=6)
             self.assertEqual(len(x1.tf[tf].sweeps), len(x2.tf[tf].sweeps))
         self.assertEqual({k: round(v, 4) for k, v in x1.levels.items()}, {k: round(v, 4) for k, v in x2.levels.items()})
-
-
-class TestNews(unittest.TestCase):
-    def test_windows(self):
-        import tempfile, os
-        p = os.path.join(tempfile.mkdtemp(), "e.csv")
-        open(p, "w").write("datetime_utc,name,impact\n2026-06-05 12:30,NFP,high\n2026-06-05 18:00,Fed speech,medium\n")
-        n = NewsFilter(p, 30, 15)
-        T = lambda s: pd.Timestamp(s, tz="UTC")
-        self.assertEqual(n.status(T("2026-06-05 11:50")).state, "CLEAR")
-        self.assertEqual(n.status(T("2026-06-05 12:10")).state, "PRE_NEWS")
-        self.assertEqual(n.status(T("2026-06-05 12:40")).state, "POST_NEWS")
-        self.assertEqual(n.status(T("2026-06-05 12:50")).state, "CLEAR")
-        self.assertEqual(n.status(T("2026-06-05 17:50")).state, "PRE_NEWS")    # keyword 'Fed' => treated as high impact
 
 
 if __name__ == "__main__":

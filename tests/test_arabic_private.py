@@ -4,7 +4,6 @@ import numpy as np
 from tests.helpers import cfg, FakeTG
 from goldbot import i18n as T
 from goldbot.notify.telegram import Telegram, CommandBot
-from goldbot.ai.gemini_layer import GeminiLayer, ModelRetired, DEFAULT_MODEL
 from goldbot.monitor import CycleLog
 from tests.test_e2e import find_tradable
 
@@ -68,54 +67,9 @@ class TestPrivateRouting(unittest.TestCase):
         self.assertIn("777", tg.private[0][1])
 
 
-class TestGeminiModel(unittest.IsolatedAsyncioTestCase):
-    def test_default_model(self):
-        with mock.patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("GEMINI_MODEL", None)
-            self.assertEqual(GeminiLayer(cfg()).model, "gemini-3.8-flash")
-        self.assertEqual(DEFAULT_MODEL, "gemini-3.8-flash")
-        self.assertEqual(GeminiLayer(cfg()).fallback_model, "gemini-3.7-flash")
-
-    async def test_rest_call_uses_3_8_flash_and_parses(self):
-        os.environ["GEMINI_API_KEY"] = "k"
-        os.environ.pop("GEMINI_MODEL", None)
-        body = {"candidates": [{"content": {"parts": [{"text": '{"decision":"BUY","reason":"الأدلة متسقة"}'}]}}]}
-        s = FakeSession(lambda *a: Resp(200, body))
-        g = GeminiLayer(cfg(), session=s)
-        d = await g.decide("card", "BUY")
-        self.assertEqual((d.decision, d.reason), ("BUY", "الأدلة متسقة"))
-        self.assertIn("models/gemini-3.8-flash:generateContent", s.calls[0]["url"])
-        self.assertIn("الرد", s.calls[0]["json"]["systemInstruction"]["parts"][0]["text"] + "الرد") 
-
-    async def test_retired_model_alerts_once_and_blocks(self):
-        os.environ["GEMINI_API_KEY"] = "k"
-        os.environ.pop("GEMINI_MODEL", None)
-        s = FakeSession(lambda *a: Resp(404, {}))
-        g = GeminiLayer(cfg(), session=s)
-        alerts = []
-        g.alert = alerts.append
-        d1 = await g.decide("card", "SELL")
-        d2 = await g.decide("card", "SELL")
-        self.assertEqual((d1.decision, d2.decision), ("NO TRADE", "NO TRADE"))
-        self.assertEqual(len(alerts), 1)
-        self.assertIn("أوقفته", alerts[0])
-
-    async def test_fallback_model_used_after_404(self):
-        os.environ["GEMINI_API_KEY"] = "k"
-        os.environ.pop("GEMINI_MODEL", None)
-        body = {"candidates": [{"content": {"parts": [{"text": '{"decision":"SELL","reason":"ok"}'}]}}]}
-        s = FakeSession(lambda url, d, j: Resp(404) if "gemini-3.8-flash:" in url else Resp(200, body))
-        g = GeminiLayer(cfg(ai__fallback_model="my-newer-model"), session=s)
-        g.alert = lambda t: None
-        d = await g.decide("card", "SELL")
-        self.assertEqual(d.decision, "SELL")
-        self.assertIn("my-newer-model", s.calls[-1]["url"])
-
-
 class TestArabic(unittest.TestCase):
     def test_reasons_translate(self):
         self.assertIn("بيانات", T.reason_ar("STALE_DATA(30s>20s)"))
-        self.assertIn("NFP", T.reason_ar("NEWS_HIGH_RISK(NFP|20)"))
         self.assertEqual(T.reason_ar("UNKNOWN_CODE"), "UNKNOWN_CODE")
         self.assertEqual(T.final_ar("BUY SENT"), "تم إرسال إشارة شراء")
 
@@ -130,7 +84,7 @@ class TestArabic(unittest.TestCase):
 
     def test_every_strategy_check_has_arabic(self):
         import re
-        src = open("goldbot/strategies/impl.py", encoding="utf-8").read()
+        src = open("goldbot/strategies/impl.py", encoding="utf-8").read() + open("goldbot/strategies/smc.py", encoding="utf-8").read()
         names = set(re.findall(r'ch\.add\("([^"]+)"', src))
         missing = [n for n in names if n not in T.CHECKS]
         self.assertEqual(missing, [])

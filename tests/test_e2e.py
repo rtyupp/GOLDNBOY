@@ -2,7 +2,6 @@ import asyncio, os, tempfile, time, unittest
 import pandas as pd
 from tests.helpers import cfg, FakeTG
 from goldbot.app import BotApp
-from goldbot.ai.gemini_layer import GeminiLayer
 from goldbot.core.market_data import MarketData
 from goldbot.engine.pipeline import Pipeline
 from goldbot.models import Tick
@@ -73,18 +72,12 @@ class TestE2E(unittest.IsolatedAsyncioTestCase):
         tg = FakeTG()
         c = cfg(paths__journal=os.path.join(tempfile.mkdtemp(), "j.sqlite"), paths__log_dir=tempfile.mkdtemp())
         app = BotApp(c, tg=tg, history_provider=SyntheticHistory())
-        g = GeminiLayer(c)
-        g.adapter = lambda prompt: '{"decision":"%s","reason":"card consistent"}' % cand.best.signal
-        app.gemini = g
-        ai = await g.decide("card", cand.best.signal)
-        app.pipeline.finalize(cand, ai)
-        self.assertEqual(cand.log.final, f"{cand.best.signal} SENT")
-        await app.emit_signal(cand, ai)
+        await app.emit_signal(cand)
         self.assertEqual(len(tg.channel), 1)
         self.assertEqual(len(tg.photos), 1)
         self.assertGreater(tg.photos[0][0], 20_000)
         row = app.journal.last_signals(1)[0]
-        for k in ("timestamp", "symbol", "direction", "entry", "sl", "tp1", "tp2", "strategy", "session", "score", "ai_decision", "status"):
+        for k in ("timestamp", "symbol", "direction", "entry", "sl", "tp1", "tp2", "strategy", "session", "score", "status"):
             self.assertIsNotNone(row[k], k)
         # drive price through TP1 then TP2 using ticks -> exactly 2 notifications
         p = cand.best.plan
@@ -107,16 +100,14 @@ class TestE2E(unittest.IsolatedAsyncioTestCase):
                 return False
         c = cfg(paths__journal=os.path.join(tempfile.mkdtemp(), "j.sqlite"), paths__log_dir=tempfile.mkdtemp())
         app = BotApp(c, tg=BadTG(), history_provider=SyntheticHistory())
-        ai = type("A", (), {"decision": cand.best.signal, "reason": "ok"})()
-        await app.emit_signal(cand, ai)
+        await app.emit_signal(cand)
         self.assertEqual(app.journal.stats()["total"], 0)
 
     async def test_open_trade_and_cooldown_limits(self):
         df, cand = find_tradable()
         c = cfg(paths__journal=os.path.join(tempfile.mkdtemp(), "j.sqlite"), paths__log_dir=tempfile.mkdtemp())
         app = BotApp(c, tg=FakeTG(), history_provider=SyntheticHistory())
-        ai = type("A", (), {"decision": cand.best.signal, "reason": "ok"})()
-        await app.emit_signal(cand, ai)
+        await app.emit_signal(cand)
         cand.reasons = []
         app._apply_limits(cand, cand.ctx.ts + pd.Timedelta(minutes=5))
         self.assertTrue(any(r.startswith("OPEN_TRADE_EXISTS") for r in cand.reasons))
@@ -127,7 +118,7 @@ class TestE2E(unittest.IsolatedAsyncioTestCase):
         c = cfg(paths__journal=os.path.join(tempfile.mkdtemp(), "j.sqlite"), paths__log_dir=tempfile.mkdtemp())
         app = BotApp(c, tg=FakeTG(), history_provider=SyntheticHistory())
         app.last_cand = cand
-        for cmd in ("/help", "/status", "/price", "/analysis", "/signal", "/stats", "/history", "/last", "/market", "/session", "/news"):
+        for cmd in ("/help", "/status", "/price", "/analysis", "/signal", "/stats", "/history", "/last", "/market", "/session"):
             out = app.cmd.handle_text(cmd)
             self.assertTrue(out and "حدث خطأ" not in out, f"{cmd}: {out}")
         self.assertIn("الاتجاه:", app.cmd.handle_text("/analysis"))

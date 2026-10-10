@@ -1,4 +1,4 @@
-"""التهيئة الذاتية: بناء السجل التاريخي (Backtest) ثم تدريب نموذج التعلم الآلي وتفعيله تلقائيًا إن اجتاز الاختبار.
+"""التهيئة الذاتية: بناء السجل التاريخي (Backtest) الذي يُستخدم لحساب «الاحتمال التاريخي» لكل إعداد.
 يعمل تلقائيًا عند أول تشغيل (وكل N يوم) في عملية فرعية منخفضة الأولوية حتى لا يؤثر على السعر اللحظي.
 بدون هذا السجل لا يوجد «احتمال تاريخي» فيمتنع البوت عن الإشارات (probability.block_if_insufficient)."""
 from __future__ import annotations
@@ -77,7 +77,7 @@ class Bootstrapper:
             days = int(self.cfg.get("bootstrap.days", 45))
             tfs = list(self.cfg.get("bootstrap.tfs", ["5m", "15m"]))
             cfg_path = self.cfg.get("_config_path", "config/config.yaml")
-            notify(f"🧠 بدأت التهيئة الذاتية: أبني السجل التاريخي من آخر {days} يومًا ({', '.join(tfs)}) ثم أدرّب نموذج التعلم الآلي.\n"
+            notify(f"🧠 بدأت التهيئة الذاتية: أبني السجل التاريخي من آخر {days} يومًا ({', '.join(tfs)}).\n"
                    "تستغرق 5–20 دقيقة وتعمل في الخلفية؛ السعر اللحظي والأوامر تعمل كالمعتاد.")
             log_path = os.path.join(self.cfg.get("paths.log_dir", "logs"), "bootstrap.log")
             for tf in tfs:
@@ -91,17 +91,11 @@ class Bootstrapper:
                     return False
                 log.info("اكتمل Backtest %s خلال %.0f ثانية", tf, time.time() - t0)
             n = await asyncio.to_thread(self.backtest_trades)
-            ml_txt = "التعلم الآلي: غير مفعّل في الإعدادات."
-            if self.app.ml is not None:
-                hist = await asyncio.to_thread(self.app.journal.history_trades)
-                rep = await asyncio.to_thread(self.app.ml.train, hist)
-                ml_txt = self.app.ml.describe()
-            self.last_summary = f"{n} صفقة تاريخية. {ml_txt}"
+            self.last_summary = f"{n} صفقة تاريخية."
             os.makedirs(os.path.dirname(self.marker) or ".", exist_ok=True)
             with open(self.marker, "w", encoding="utf-8") as f:
-                json.dump({"ts": pd.Timestamp.now(tz="UTC").isoformat(), "trades": n, "ml": (self.app.ml.report if self.app.ml else {})},
-                          f, ensure_ascii=False, default=str)
-            notify(f"✅ اكتملت التهيئة الذاتية.\nالسجل التاريخي: {n} صفقة.\n{ml_txt}\n"
+                json.dump({"ts": pd.Timestamp.now(tz="UTC").isoformat(), "trades": n}, f, ensure_ascii=False, default=str)
+            notify(f"✅ اكتملت التهيئة الذاتية.\nالسجل التاريخي: {n} صفقة.\n"
                    + ("الآن صار «الاحتمال التاريخي» متوفرًا، وستظهر الإشارات عند اكتمال الشروط." if n else
                       "تنبيه: لم تُنتج الاختبارات أي صفقة، قد تحتاج بيانات أكثر."))
             return True

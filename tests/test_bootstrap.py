@@ -1,8 +1,7 @@
 import asyncio, json, os, re, subprocess, sys, tempfile, unittest
 import numpy as np, pandas as pd
 from tests.helpers import cfg
-from tests.test_assistant_news import mkapp
-from goldbot.ml.model import MLGate
+from tests.helpers import mkapp
 
 
 def fill_history(app, n, source="backtest"):
@@ -78,40 +77,6 @@ class TestBootstrapLogic(unittest.IsolatedAsyncioTestCase):
         await t
 
 
-class TestMLActivation(unittest.TestCase):
-    def mk(self, informative: bool):
-        rng = np.random.default_rng(3)
-        n = 700
-        a = rng.normal(size=n)
-        p = 1 / (1 + np.exp(-2.5 * a)) if informative else np.full(n, 0.5)
-        r = np.where(rng.random(n) < p, 1.5, -1.0)
-        return pd.DataFrame({"ts": pd.date_range("2026-01-01", periods=n, freq="1h", tz="UTC").astype(str),
-                             "features": [json.dumps({"a": float(x), "b": float(rng.normal())}) for x in a], "r": r})
-
-    def gate(self):
-        return MLGate(cfg(ml__enabled=True, ml__model_path=os.path.join(tempfile.mkdtemp(), "m.pkl")))
-
-    def test_informative_features_activate_and_survive_reload(self):
-        g = self.gate()
-        rep = g.train(self.mk(True))
-        self.assertTrue(rep["passed"], rep)
-        self.assertTrue(g.active)
-        self.assertIn("مفعّل", g.describe())
-        g2 = MLGate(cfg(ml__enabled=True, ml__model_path=g.path))
-        self.assertTrue(g2.active)                                     # يُحمَّل بعد إعادة التشغيل
-
-    def test_noise_stays_off_with_arabic_explanation(self):
-        g = self.gate()
-        rep = g.train(self.mk(False))
-        self.assertFalse(rep["passed"])
-        self.assertIn("غير مفعّل", g.describe())
-
-    def test_too_few_trades_explained(self):
-        g = self.gate()
-        g.train(self.mk(True).head(50))
-        self.assertIn("عدد الصفقات غير كافٍ", g.describe())
-
-
 class TestChartIsEnglish(unittest.TestCase):
     def test_no_arabic_in_chart_source(self):
         src = open("goldbot/notify/chart.py", encoding="utf-8").read()
@@ -129,7 +94,6 @@ paths: {{journal: {d}/j.sqlite, log_dir: {d}/logs}}
 data: {{cache_dir: {d}/cache, history_days: 30}}
 backtest: {{report_dir: {d}/reports, steps: {{5m: 1, 15m: 1}}}}
 bootstrap: {{days: 30, tfs: [15m], marker: {d}/b.json, timeout_sec: 900}}
-ml: {{enabled: true, model_path: {d}/m.pkl}}
 confluence: {{min_score: 60}}
 """
         path = os.path.join(d, "c.yaml")
@@ -143,7 +107,7 @@ confluence: {{min_score: 60}}
         ok = await app.bootstrap.run(True)
         self.assertTrue(ok)
         n = app.bootstrap.backtest_trades()
-        print("\nصفقات السجل:", n, "|", app.ml.describe())
+        print("\nصفقات السجل:", n)
         self.assertGreater(n, 0)
         self.assertTrue(os.path.exists(os.path.join(d, "b.json")))
 

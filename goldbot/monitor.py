@@ -25,7 +25,7 @@ def setup_logging(level: str = "INFO", log_dir: str = "logs") -> None:
 
 
 STAGES = ["DATA", "CANDLES", "INDICATORS", "STRUCTURE", "LIQUIDITY", "STRATEGY",
-          "SCORE", "PROBABILITY", "RISK", "AI"]
+          "SCORE", "PROBABILITY", "RISK"]
 
 
 @dataclass

@@ -1,4 +1,4 @@
-"""الأوامر:  python -m goldbot run | backtest | train-ml | check"""
+"""الأوامر:  python -m goldbot run | backtest | compare | check"""
 from __future__ import annotations
 import argparse, asyncio, json, os, signal, sys
 import pandas as pd
@@ -71,16 +71,20 @@ def cmd_backtest(cfg, a):
                   f"متوسط R={r.get('avg_r')} معامل الربح={r.get('profit_factor')} أقصى تراجع(R)={r.get('max_drawdown_r')}")
         if a.store:
             print(f"  تم حفظ {store_probability_history(j, res)} صفقة في سجل الاحتمال التاريخي")
-    print("ملاحظة: نتائج الـ Backtest تقدير للماضي وليست ضمانًا للمستقبل. السبريد مفترض ولم يُطبَّق فلتر الأخبار.")
+    print("ملاحظة: نتائج الـ Backtest تقدير للماضي وليست ضمانًا للمستقبل. السبريد والانزلاق مفترضان بقيم ثابتة من الإعدادات.")
 
 
-def cmd_train_ml(cfg):
-    from goldbot.ml.model import MLGate
-    from goldbot.tracking.journal import Journal
-    j = Journal(cfg.get("paths.journal", "data/journal.sqlite"))
-    rep = MLGate(cfg).train(j.history_trades())
-    print(json.dumps(rep, indent=2, default=str, ensure_ascii=False))
-    print("فعّل ml.enabled: true في config.yaml فقط إذا كانت passed=true.")
+def cmd_compare(cfg, a):
+    from goldbot.backtest.compare import compare, fmt, save
+    days = a.days or int(cfg.get("backtest.history_days", 60))
+    base = _history_1m(cfg, days)
+    print(f"البيانات التاريخية: {len(base)} شمعة 1m  من {base.index[0]} إلى {base.index[-1]}")
+    tf = "5m" if a.tf == "all" else a.tf
+    step = a.step or int(cfg.get(f"backtest.steps.{tf}", 1))
+    res = compare(base, cfg, tf, step, progress=lambda k, n: print(f"  {k}/{n}", flush=True))
+    print(fmt(res))
+    print("تم حفظ التقرير:", save(res, cfg.get("backtest.report_dir", "reports")))
+    print("ملاحظة: نتائج الماضي تقدير وليست ضمانًا. لا شيء هنا يضمن ربحًا.")
 
 
 def cmd_check(cfg):
@@ -90,12 +94,6 @@ def cmd_check(cfg):
     print("TELEGRAM_BOT_TOKEN   :", ok(env("TELEGRAM_BOT_TOKEN")))
     print("TELEGRAM_ADMIN_IDS   :", env("TELEGRAM_ADMIN_IDS") or "ناقص ❌  (اكتب /id للبوت ليعطيك رقمك)")
     print("وجهة الإشارات        :", cfg.get("telegram.signal_target", "private"), "| TELEGRAM_CHANNEL_ID:", env("TELEGRAM_CHANNEL_ID") or "غير مستخدم الآن")
-    if cfg.get("ai.enabled"):
-        model = env("GEMINI_MODEL") or cfg.get("ai.model") or "gemini-3.8-flash"
-        print("Gemini               :", (("دالتك الحالية: " + cfg.get("ai.adapter")) if cfg.get("ai.adapter")
-              else f"REST — النموذج {model} — GEMINI_API_KEY {ok(env('GEMINI_API_KEY'))}"))
-    else:
-        print("Gemini               : معطّل (ai.enabled=false) — لا حاجة لمفتاح")
     if env("TELEGRAM_BOT_TOKEN"):
         try:
             r = requests.get(f"https://api.telegram.org/bot{env('TELEGRAM_BOT_TOKEN')}/getMe", timeout=15).json()
@@ -118,15 +116,11 @@ def cmd_check(cfg):
         print("Dukascopy (تاريخي)   :", f"نجح ✅ ({len(df)} شمعة 1m خلال آخر 48 ساعة)" if len(df) else "لا توجد شموع (تحقق من الشبكة، أو السوق مغلق/عطلة)")
     except Exception as e:
         print("Dukascopy (تاريخي)   : فشل ❌", type(e).__name__, e)
-    from goldbot.analysis.news import NewsFilter, fetch_ff, FEED_HOSTS
-    res = fetch_ff(requests.Session(), cfg.get("news.feed_hosts", FEED_HOSTS), tuple(cfg.get("news.currencies", ["USD"])))
-    print("تقويم الأخبار (FF)   :", f"نجح ✅ ({len(res.df)} حدث مهم)" if res.df is not None else "فشل ❌ " + "، ".join(res.errors))
-    print("ملف الأخبار اليدوي   :", len(NewsFilter(cfg.get("news.events_file")).events), "حدث")
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="goldbot", description="بوت إشارات الذهب XAU/USD")
-    ap.add_argument("command", choices=["run", "backtest", "train-ml", "check"])
+    ap.add_argument("command", choices=["run", "backtest", "compare", "check"])
     ap.add_argument("--config", default=os.environ.get("GOLDBOT_CONFIG", "config/config.yaml"))
     ap.add_argument("--tf", default="5m", choices=["1m", "5m", "15m", "all"])
     ap.add_argument("--days", type=int)
@@ -137,7 +131,7 @@ def main(argv=None):
     apply_env_overrides(cfg)
     setup_logging(cfg.get("log_level", "INFO"), cfg.get("paths.log_dir", "logs"))
     {"run": lambda: cmd_run(cfg), "backtest": lambda: cmd_backtest(cfg, a),
-     "train-ml": lambda: cmd_train_ml(cfg), "check": lambda: cmd_check(cfg)}[a.command]()
+     "compare": lambda: cmd_compare(cfg, a), "check": lambda: cmd_check(cfg)}[a.command]()
 
 
 if __name__ == "__main__":
