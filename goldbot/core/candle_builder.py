@@ -1,7 +1,7 @@
 """Builds 1-minute candles from live ticks (mid price, volume = tick count)."""
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Callable, List, Optional
+from typing import Callable, Optional
 from goldbot.models import Tick
 
 

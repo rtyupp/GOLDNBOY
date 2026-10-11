@@ -1,7 +1,6 @@
 """Confluence score 0..100 = weighted evidence for ONE direction. NOT a probability."""
 from __future__ import annotations
 from typing import Dict, Tuple
-import numpy as np
 
 WEIGHTS = {"Trend": 20, "Structure": 15, "Liquidity": 15, "Momentum": 10, "VWAP": 10,
            "Volatility": 5, "Session": 10, "PriceAction": 10}

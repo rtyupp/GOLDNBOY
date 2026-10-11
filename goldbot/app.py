@@ -2,7 +2,7 @@
 لا يوجد ذكاء اصطناعي ولا مصدر أخبار: القرار من الاستراتيجيات والمؤشرات وإدارة المخاطر فقط."""
 from __future__ import annotations
 import gc
-import asyncio, json, logging, os, time
+import asyncio, json, logging, time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 import pandas as pd
@@ -61,7 +61,8 @@ class BotApp:
 
     # ------------------------------------------------------------------ tasks
     async def load_history(self):
-        retry = float(self.cfg.get("data.history_retry_sec", 300))
+        base_retry = float(self.cfg.get("data.history_retry_sec", 120))
+        fails = 0
         while not self._stop:
             try:
                 df = await asyncio.to_thread(load_cached, self.history_provider, self.cfg.get("symbol", "XAUUSD"), "1m",
@@ -79,6 +80,8 @@ class BotApp:
                 return
             except Exception as e:           # history failure never touches the live feed
                 self.md.history_error = f"{type(e).__name__}: {e}"
+                retry = min(base_retry * (2 ** fails), 900.0)          # تأخير متزايد حتى 15 دقيقة: لا نضغط على مصدر يحجبنا
+                fails += 1
                 log.error("فشل تحميل البيانات التاريخية: %s (إعادة المحاولة بعد %.0f ثانية)", self.md.history_error, retry)
                 await asyncio.sleep(retry)
 

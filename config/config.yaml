@@ -14,9 +14,12 @@ providers:                  # كل مزوّد بيانات قابل للاستب
     url: https://datafeed.dukascopy.com/datafeed    # الشهر في الرابط يبدأ من 00 (يعالجه الكود)
     instrument: XAUUSD
     price_scale: 1000
-    workers: 6
+    workers: 3                # كان 6: الإفراط في الطلبات المتوازية يسبب HTTP 429
     timeout_sec: 15
-    retries: 3
+    retries: 4
+    pause_sec: 0.15           # فاصل بين الطلبات لتخفيف الضغط على الخادم المجاني
+    abort_after_throttles: 8  # بعد 8 رفضات 429 متتالية نتوقف ونعيد المحاولة لاحقًا
+    cache_dir: data/cache/duka  # كاش لكل ساعة مكتملة: لا يُعاد تنزيل ما نجح (يخفّف الحجب بعد إعادة التشغيل)
   swissquote:
     url: https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAU/USD
     poll_sec: 5
@@ -44,7 +47,7 @@ data:
   max_tick_age_sec: 20      # أقدم من هذا = لا صفقة
   history_days: 5          # Dukascopy مجاني وعميق؛ 30 يومًا كافٍ للفريمات العليا
   min_history_rows: 500   # نحو 60 شمعة 4H؛ أقل من ذلك لا يبدأ التحليل
-  history_retry_sec: 300
+  history_retry_sec: 120    # يتضاعف عند تكرار الفشل (حتى 15 دقيقة)
   cache_dir: data/cache
   max_candle_gap_min: 5     # آخر شمعة 1m يجب أن تكون أحدث من هذا وإلا لا صفقة
 
@@ -60,15 +63,15 @@ sessions:                   # ساعات UTC [بداية، نهاية). لا ي�
 sessions_or_minutes: 30
 
 filters:
-  min_efficiency_ratio: 0.08     # كان 0.12: يقلّل حجب السوق الهادئ
+  min_efficiency_ratio: 0.12
   allow_off_hours: false
 
 strategies:
   enabled: [trend_pullback, liquidity_sweep, breakout, reversal, vwap, smc_ote_fvg, smc_sweep_mss_fvg]   # آخر اثنتين: SMC (OTE+FVG) و(Sweep→MSS→FVG)
-  min_score: 55
+  min_score: 60
 
 confluence:
-  min_score: 60                  # كان 70
+  min_score: 68.4                # = 70 الأصلية بعد حذف بند الأخبار (5 نقاط): الدرجة صارت S×100/95 بدل S+5
   conflict_margin: 10
 
 probability:

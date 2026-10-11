@@ -3,7 +3,7 @@
 الأوامر تعمل فقط للأرقام الموجودة في TELEGRAM_ADMIN_IDS (ما عدا /id)."""
 from __future__ import annotations
 import asyncio, json, logging, re, time
-from typing import Callable, List, Optional
+from typing import List, Optional
 import requests
 from goldbot import i18n as T
 

@@ -1,7 +1,7 @@
 """Live TP1 / TP2 / SL tracking from the tick stream. Each event is sent exactly once (DB compare-and-set)."""
 from __future__ import annotations
 import logging, time
-from typing import Callable, Optional
+from typing import Callable
 import pandas as pd
 from goldbot.i18n import DIR
 from goldbot.models import Tick

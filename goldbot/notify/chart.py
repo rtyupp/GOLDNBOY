@@ -1,13 +1,11 @@
 """Chart generated inside the bot (matplotlib, no TradingView screenshot)."""
 from __future__ import annotations
 import io
-from typing import Optional
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import numpy as np
-import pandas as pd
 
 BG, FG, GRID = "#0e1117", "#d0d4dc", "#1f2430"
 UP, DN = "#26a69a", "#ef5350"

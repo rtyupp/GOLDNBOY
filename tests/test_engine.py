@@ -144,12 +144,12 @@ class TestGates(unittest.TestCase):
     def test_insufficient_probability_does_not_block_by_default(self):
         class B: signal = "BUY"
         class P: sufficient, n = False, 3
-        self.assertEqual(no_trade.setup_gates(cfg(), B(), 65, P()), [])
+        self.assertEqual(no_trade.setup_gates(cfg(), B(), 75, P()), [])
 
     def test_sufficient_but_weak_probability_still_blocks(self):
         class B: signal = "BUY"
         class P: sufficient, n, win_rate, avg_r = True, 50, 0.30, -0.2
-        r = no_trade.setup_gates(cfg(), B(), 65, P())
+        r = no_trade.setup_gates(cfg(), B(), 75, P())
         self.assertTrue(any(x.startswith("WEAK_PROBABILITY") for x in r))
 
 

@@ -1,7 +1,6 @@
 """Seven independent strategies (5 classic + 2 SMC in smc.py). Each returns Signal/Score/Entry/SL/TP1/TP2/Reason via Strategy.evaluate()."""
 from __future__ import annotations
-from typing import Optional, Tuple
-import numpy as np
+from typing import Optional
 from goldbot.strategies.base import Strategy, Checks, opp
 
 

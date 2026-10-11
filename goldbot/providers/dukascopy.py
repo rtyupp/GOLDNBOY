@@ -5,14 +5,13 @@ Dukascopy publishes compressed hourly .bi5 files. IMPORTANT: in the URL the mont
 errors) are skipped; a missing hour is never treated as success by FallbackHistory.
 """
 from __future__ import annotations
-import io
 import lzma
 import logging
+import os
 import struct
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import timedelta
 
 import pandas as pd
 import requests
@@ -31,9 +30,18 @@ class DukascopyHistory(HistoryProvider):
             else self.base.replace("http://", "https://", 1)
         self.symbol = cfg.get("instrument", symbol.replace("/", "").upper())
         self.scale = float(cfg.get("price_scale", 1000))
-        self.workers = max(1, min(12, int(cfg.get("workers", 6))))
+        self.workers = max(1, min(12, int(cfg.get("workers", 3))))
         self.timeout = float(cfg.get("timeout_sec", 15))
-        self.retries = max(1, int(cfg.get("retries", 3)))
+        self.retries = max(1, int(cfg.get("retries", 4)))
+        self.pause = float(cfg.get("pause_sec", 0.0))                 # فاصل صغير بين الطلبات لتخفيف الضغط
+        self.max_throttles = int(cfg.get("abort_after_throttles", 8))  # بعد هذا العدد من 429 المتتالية نتوقف بدل إغراق الخادم
+        self.cache_dir = cfg.get("cache_dir")                          # None = كاش الذاكرة فقط (الاختبارات)
+        self._mem: dict = {}
+        self._cooldown_until = 0.0
+        self._throttles = 0
+        if self.cache_dir:
+            os.makedirs(self.cache_dir, exist_ok=True)
+            self._prune_cache()
         self.s = session or requests.Session()
         self.s.headers.setdefault("User-Agent", "Mozilla/5.0 goldbot")
         self._lock = threading.Lock()
@@ -68,32 +76,116 @@ class DukascopyHistory(HistoryProvider):
             return pd.DataFrame(columns=["close", "volume"], index=pd.DatetimeIndex([], tz="UTC"))
         return pd.DataFrame(rows, columns=["time", "close", "volume"]).set_index("time").sort_index()
 
+    @staticmethod
+    def _bars(ticks: pd.DataFrame) -> pd.DataFrame:
+        """ticks ساعة → شموع 1m (أصغر بكثير في الذاكرة والكاش، والنتيجة النهائية متطابقة لأن الدقيقة لا تعبر الساعة)."""
+        if ticks.empty:
+            return pd.DataFrame(columns=OHLCV, index=pd.DatetimeIndex([], tz="UTC"))
+        bars = ticks["close"].resample("1min").ohlc()
+        bars["volume"] = ticks["volume"].resample("1min").sum()
+        return bars.dropna(subset=["open", "high", "low", "close"])[OHLCV]
+
+    # ------------------------------------------------------------------ كاش الساعات المكتملة
+    @staticmethod
+    def _complete(hour: pd.Timestamp) -> bool:
+        return hour + pd.Timedelta(hours=1, minutes=10) <= pd.Timestamp.now(tz="UTC")
+
+    def _cache_path(self, hour: pd.Timestamp) -> str:
+        return os.path.join(self.cache_dir, f"{self.symbol}_{hour.strftime('%Y%m%d%H')}.pkl")
+
+    def _cache_get(self, hour: pd.Timestamp):
+        if hour in self._mem:
+            return self._mem[hour]
+        if self.cache_dir:
+            try:
+                df = pd.read_pickle(self._cache_path(hour))
+                self._mem[hour] = df
+                return df
+            except Exception:
+                return None
+        return None
+
+    def _cache_put(self, hour: pd.Timestamp, bars: pd.DataFrame):
+        if not self._complete(hour):
+            return                                    # الساعة الحالية ما زالت تتغير: لا تُخزَّن
+        self._mem[hour] = bars
+        if self.cache_dir:
+            try:
+                bars.to_pickle(self._cache_path(hour))
+            except Exception as e:
+                log.warning("تعذّر حفظ كاش الساعة: %s", type(e).__name__)
+
+    def _prune_cache(self, keep_days: int = 21):
+        cutoff = time.time() - keep_days * 86400
+        try:
+            for f in os.listdir(self.cache_dir):
+                p = os.path.join(self.cache_dir, f)
+                if f.endswith(".pkl") and os.path.getmtime(p) < cutoff:
+                    os.remove(p)
+        except OSError:
+            pass
+
+    # ------------------------------------------------------------------ الطلب مع تراجع ذكي
+    def _cooldown(self, seconds: float):
+        with self._lock:
+            self._cooldown_until = max(self._cooldown_until, time.time() + min(seconds, 60.0))
+
+    def _wait_cooldown(self):
+        with self._lock:
+            d = self._cooldown_until - time.time()
+        if d > 0:
+            time.sleep(min(d, 60.0))                  # نوم واحد (لا حلقة انتظار) ليبقى الاختبار والإيقاف سريعين
+
     def _hour(self, hour: pd.Timestamp):
-        empty = pd.DataFrame(columns=["close", "volume"])
+        empty = pd.DataFrame(columns=OHLCV, index=pd.DatetimeIndex([], tz="UTC"))
+        cached = self._cache_get(hour)
+        if cached is not None:
+            self._count("ok" if not cached.empty else "missing")
+            return cached
+        if self._throttles >= self.max_throttles:    # الخادم يرفضنا: لا نزيد الضغط، والكاش يحفظ ما نجح للمحاولة القادمة
+            self._count("errors", self.last_error or "HTTP 429")
+            return empty
         err = None
-        for base in (self.base, self.alt_base):
-            for attempt in range(self.retries):
-                try:
-                    r = self.s.get(self.url_for(hour, base), timeout=self.timeout)
-                except requests.RequestException as e:
-                    err = f"{type(e).__name__}"
-                    time.sleep(0.4 * (attempt + 1))
-                    continue
-                if r.status_code == 404:                  # hour not published (weekend / still open / not yet available)
-                    self._count("missing")
+        for attempt in range(self.retries):
+            self._wait_cooldown()
+            if self.pause:
+                time.sleep(self.pause)
+            base = self.alt_base if (err and not err.startswith("HTTP") and attempt % 2 == 1) else self.base   # البديل عند أخطاء الشبكة فقط
+            try:
+                r = self.s.get(self.url_for(hour, base), timeout=self.timeout)
+            except requests.RequestException as e:
+                err = f"{type(e).__name__}"
+                time.sleep(0.4 * (attempt + 1))
+                continue
+            if r.status_code == 404:                  # hour not published (weekend / still open / not yet available)
+                self._throttles = 0
+                self._count("missing")
+                if self._complete(hour + pd.Timedelta(hours=2)):
+                    self._cache_put(hour, empty)      # ساعات العطلة القديمة لا تُطلب مرة ثانية
+                return empty
+            if r.status_code == 200:
+                self._throttles = 0
+                if not r.content:
+                    self._count("missing")            # market closed: empty file
+                    self._cache_put(hour, empty)
                     return empty
-                if r.status_code == 200:
-                    if not r.content:
-                        self._count("missing")            # market closed: empty file
-                        return empty
-                    try:
-                        out = self.decode_ticks(r.content, hour, self.scale)
-                        self._count("ok")
-                        return out
-                    except (lzma.LZMAError, struct.error, ValueError) as e:
-                        self._count("errors", f"corrupt file: {type(e).__name__}")
-                        return empty
-                err = f"HTTP {r.status_code}"             # 403 / 429 / 5xx: blocked or throttled -> back off, retry
+                try:
+                    out = self._bars(self.decode_ticks(r.content, hour, self.scale))
+                except (lzma.LZMAError, struct.error, ValueError) as e:
+                    self._count("errors", f"corrupt file: {type(e).__name__}")
+                    return empty
+                self._count("ok")
+                self._cache_put(hour, out)
+                return out
+            err = f"HTTP {r.status_code}"             # 403 / 429 / 5xx: blocked or throttled -> back off, retry
+            if r.status_code in (429, 503):
+                self._throttles += 1
+                try:
+                    wait = float(r.headers.get("Retry-After", ""))
+                except (TypeError, ValueError, AttributeError):
+                    wait = 4.0 * (2 ** attempt)       # 4s, 8s, 16s, 32s
+                self._cooldown(wait)                  # كل العمال يتوقفون معًا (لا نكرر الطلب من خيوط أخرى)
+            else:
                 time.sleep(0.8 * (attempt + 1))
         self._count("errors", err)
         return empty
@@ -106,27 +198,29 @@ class DukascopyHistory(HistoryProvider):
         hours = list(pd.date_range(start.floor("h"), end.ceil("h"), freq="h", inclusive="left", tz="UTC"))
         self.stats = {"ok": 0, "missing": 0, "errors": 0}
         self.progress = (0, len(hours))
+        self._throttles = 0
         with ThreadPoolExecutor(max_workers=self.workers) as pool:
             parts = list(pool.map(self._hour, hours))
-        ticks = [p for p in parts if not p.empty]
-        if not ticks and self.stats["errors"] > 0 and self.stats["errors"] >= self.stats["missing"]:
+        bars = [p for p in parts if not p.empty]
+        e, ok = self.stats["errors"], self.stats["ok"]
+        if not bars and e > 0 and e >= self.stats["missing"]:
             # do NOT pretend "no data": the source is unreachable/blocked -> surface the real reason
-            raise RuntimeError(f"Dukascopy غير متاح ({self.stats['errors']} فشل من {len(hours)} ساعة، آخر خطأ: {self.last_error})")
-        if not ticks:
+            raise RuntimeError(f"Dukascopy غير متاح ({e} فشل من {len(hours)} ساعة، آخر خطأ: {self.last_error})")
+        if bars and e > 0 and e / max(1, ok + e) > 0.2:
+            # بيانات ناقصة بصمت أسوأ من الانتظار: نرفض الآن، وما نجح محفوظ في الكاش فتكتمل المحاولة القادمة
+            raise RuntimeError(f"Dukascopy جزئي ({e} فشل مقابل {ok} نجاح؛ المحفوظ يُستكمل في المحاولة التالية، آخر خطأ: {self.last_error})")
+        if not bars:
             return pd.DataFrame(columns=OHLCV, index=pd.DatetimeIndex([], tz="UTC"))
-        t = pd.concat(ticks).sort_index()
-        t = t[(t.index >= start) & (t.index < end)]
-        if t.empty:
+        out = pd.concat(bars).sort_index()
+        out = out[~out.index.duplicated(keep="last")]
+        out = out[(out.index >= start) & (out.index < end)]
+        if out.empty:
             return pd.DataFrame(columns=OHLCV, index=pd.DatetimeIndex([], tz="UTC"))
-        bars = t["close"].resample("1min").ohlc()
-        bars["volume"] = t["volume"].resample("1min").sum()
-        bars = bars.dropna(subset=["open", "high", "low", "close"])
-        bars = bars[OHLCV]
         if interval != "1m":
             tf = {"5m": "5min", "15m": "15min", "30m": "30min", "1h": "1h", "1d": "1D"}.get(interval)
             if tf:
-                bars = resample_ohlcv(bars, tf)[OHLCV]
-        return bars.astype(float)
+                out = resample_ohlcv(out, tf)[OHLCV]
+        return out.astype(float)
 
 
 class FallbackHistory(HistoryProvider):

@@ -10,14 +10,12 @@ Results are an estimate of the past, not a guarantee for the future.
 """
 from __future__ import annotations
 import json, logging, os
-from dataclasses import dataclass
 from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 
 from goldbot.analysis.indicators import add_indicators
-from goldbot.analysis.sessions import session_label
-from goldbot.core.timeframes import resample_ohlcv, closed_only, ALL_TFS, TF_MINUTES
+from goldbot.core.timeframes import resample_ohlcv, closed_only, ALL_TFS
 from goldbot.engine.confluence import confluence
 from goldbot.engine.pipeline import Pipeline
 

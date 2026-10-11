@@ -3,7 +3,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 from goldbot.providers.base import HistoryProvider
-from goldbot.core.timeframes import OHLCV
 
 
 def make_synthetic_1m(days: int = 20, seed: int = 7, start_price: float = 2650.0,
