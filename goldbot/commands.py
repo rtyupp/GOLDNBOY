@@ -21,7 +21,7 @@ def build_handlers(app) -> dict:
     def help_(args):
         return ("استخدم الأزرار بالأسفل، أو الأوامر:\n/start  القائمة والترحيب\n/price  السعر اللحظي\n/analysis  التحليل الحالي\n"
                 "/signal  آخر إعداد تم تقييمه\n/market  نظرة متعددة الفريمات\n/stats  الإحصائيات\n/history  آخر الإشارات\n"
-                "/last  آخر إشارة\n/session  الجلسة الحالية\n/status  حالة النظام\n/train  إعادة بناء السجل التاريخي\n/id  رقم حسابك")
+                "/last  آخر إشارة\n/session  الجلسة الحالية\n/status  حالة النظام\n/train  إعادة بناء السجل التاريخي\n/id  رقم حسابك\nأو اكتب أي سؤال عادي عن السوق أو الإشارات")
 
     def status(args):
         t = app.ticks
@@ -44,6 +44,7 @@ def build_handlers(app) -> dict:
             f"السعر اللحظي: {'حديث ✅' if fresh else 'غير صالح ❌ (' + T.reason_ar(why) + ')'}   عمر آخر تحديث: {_age(t.age_sec())}",
             f"الشموع: {app.md.summary()}",
             f"البيانات التاريخية: {hist}",
+            f"المساعد: {app.assist.status_text()}",
             f"السوق: {'مغلق (عطلة نهاية الأسبوع)' if resources.market_closed(pd.Timestamp.now(tz='UTC')) else 'مفتوح'}   الذاكرة: {_mem_txt()}",
             f"الوضع: {'حقيقي' if app.cfg.get('mode') == 'live' else 'تجريبي (بدون إرسال)'}   الاستراتيجيات: {len(app.pipeline.strategies)}",
             f"التهيئة الذاتية: {'قيد التنفيذ ⏳' if app.bootstrap.running else app.bootstrap.last_summary}   سجل الاحتمال: {app.bootstrap.backtest_trades()} صفقة",

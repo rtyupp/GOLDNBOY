@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 import pandas as pd
 
+from goldbot.assist.deepseek import DeepSeek, signal_facts
 from goldbot.bootstrap import Bootstrapper
 from goldbot.commands import build_handlers
 from goldbot import resources
@@ -45,7 +46,12 @@ class BotApp:
         self.ticks.add_listener(self.builder.on_tick)
         self.ticks.add_listener(self.tracker.on_tick)
         self.last_cand = None
-        self.cmd = CommandBot(tg, build_handlers(self)) if tg else None
+        self.assist = DeepSeek(cfg)
+        self._handlers = build_handlers(self)
+        self.cmd = CommandBot(tg, self._handlers) if tg else None
+        if self.cmd:
+            self.cmd.free_text = self._free_text
+        self._summary_sent: set = set()
         self.live = None
         self._tasks: list = []
         self._stop = False
@@ -194,6 +200,75 @@ class BotApp:
             reason=b.reason, fingerprint=cand.fp, rr1=plan.rr1, rr2=plan.rr2)
         self.tracker.invalidate()
         log.info("تم تسجيل الإشارة #%d", sid)
+        if self.assist.enabled:                         # الشرح يصل بعد الإشارة ولا يؤخّرها ولا يغيّرها
+            t = asyncio.create_task(self._explain(cand, sid, prob_txt))
+            self._bg.add(t)
+            t.add_done_callback(self._bg.discard)
+
+    async def _explain(self, cand, sid: int, prob_txt: str):
+        try:
+            b, ctx, plan = cand.best, cand.ctx, cand.best.plan
+            facts = signal_facts(cand, plan, ctx, prob_txt, T.strategy_reason_ar(b.reason), T.STRATEGY.get(b.name, b.name),
+                                 T.SESSION.get(ctx.session["label"], ctx.session["label"]), T.DIR[plan.direction])
+            text = await asyncio.to_thread(self.assist.explain_signal, facts)
+            if text:
+                self.notify_q.put_nowait(f"📝 شرح الإشارة #{sid}\n{text}")
+        except Exception:
+            log.exception("فشل شرح الإشارة (الإشارة نفسها أُرسلت)")
+
+    # ------------------------------------------------------------------ الأسئلة الحرة (بدون زر: أي نص عادي)
+    def _free_text(self, text: str, chat=None):
+        if not self.assist.enabled:
+            return None
+        parts = []
+        for cmd, title in (("/price", "السعر"), ("/signal", "آخر إعداد"), ("/stats", "الإحصائيات"), ("/session", "الجلسة")):
+            try:
+                parts.append(f"[{title}]\n{self._handlers[cmd]([])}")
+            except Exception:
+                pass
+        closed = resources.market_closed(pd.Timestamp.now(tz="UTC"))
+        parts.append(f"[حالة السوق]\n{'مغلق (عطلة نهاية الأسبوع)' if closed else 'مفتوح'}")
+        return self.assist.ask(text, "\n\n".join(parts), chat)
+
+    # ------------------------------------------------------------------ الملخص اليومي/الأسبوعي (تلقائي)
+    def build_summary(self, now: pd.Timestamp):
+        """يرجع (نص الأرقام، أرقام للتعليق) أو None إن لم تكن هناك إشارات في الفترة. الأرقام من السجل فقط."""
+        weekly = now.weekday() == 4
+        since = now - pd.Timedelta(days=7 if weekly else 1)
+        rows = [r for r in self.journal.last_signals(300) if pd.Timestamp(r["timestamp"]) >= since]
+        if not rows:
+            return None
+        closed = [r for r in rows if r["r"] is not None]
+        wins = sum(1 for r in closed if r["r"] > 0)
+        total_r = sum(r["r"] for r in closed)
+        by = {}
+        for r in closed:
+            by.setdefault(T.STRATEGY.get(r["strategy"], r["strategy"]), []).append(r["r"])
+        lines = [f"{'الأسبوع' if weekly else 'اليوم'}: {len(rows)} إشارة، مغلقة {len(closed)}، مفتوحة {len(rows) - len(closed)}"]
+        if closed:
+            lines.append(f"رابحة {wins} / خاسرة {len(closed) - wins}   إجمالي R: {total_r:+.2f}")
+            lines += [f"- {k}: {len(v)} صفقة، مجموع R {sum(v):+.2f}" for k, v in by.items()]
+        facts = "\n".join(lines)
+        return ("📊 ملخص الأسبوع" if weekly else "📊 ملخص اليوم") + "\n" + facts, facts
+
+    async def summaries(self):
+        hour = int(self.cfg.get("assist.summary_hour_utc", 20))
+        while not self._stop:
+            await asyncio.sleep(300)
+            try:
+                now = pd.Timestamp.now(tz="UTC")
+                key = now.strftime("%Y-%m-%d")
+                if now.weekday() > 4 or now.hour != hour or key in self._summary_sent:
+                    continue
+                self._summary_sent.add(key)
+                res = await asyncio.to_thread(self.build_summary, now)
+                if not res:
+                    continue
+                text, facts = res
+                comment = await asyncio.to_thread(self.assist.comment_summary, facts) if self.assist.enabled else None
+                self.notify_q.put_nowait(text + (f"\n\n{comment}" if comment else ""))      # الأرقام تصل دائمًا؛ التعليق إن توفر
+            except Exception:
+                log.exception("فشل الملخص الدوري")
 
     # ------------------------------------------------------------------ health endpoint (Render/Fly/etc.)
     async def health_server(self):
@@ -262,7 +337,7 @@ class BotApp:
         else:
             self.live = self.live_factory(self.ticks.on_tick, self.ticks.set_connected)
         jobs = [("السعر اللحظي", self.live.run), ("البيانات التاريخية", self.load_history), ("التحليل", self.analysis_loop),
-                ("الإرسال", self.sender), ("الصيانة", self.housekeeping), ("فحص الصحة", self.health_server),
+                ("الإرسال", self.sender), ("الصيانة", self.housekeeping), ("الملخصات", self.summaries), ("فحص الصحة", self.health_server),
                 ("keep-alive", self.keepalive)]
         if self.cmd:
             jobs.append(("أوامر تيليجرام", self.cmd.run))

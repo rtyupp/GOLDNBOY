@@ -19,4 +19,5 @@ services:
       - {key: TELEGRAM_BOT_TOKEN, sync: false}
       - {key: TELEGRAM_ADMIN_IDS, sync: false}
       - {key: TELEGRAM_CHANNEL_ID, sync: false}   # اختياري
+      - {key: DEEPSEEK_API_KEY, sync: false}       # اختياري: شرح الإشارات والملخصات والأسئلة
       - {key: BOT_MODE, value: live}               # غيّره إلى paper للتجربة بدون إرسال

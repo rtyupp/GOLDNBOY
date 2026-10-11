@@ -166,6 +166,7 @@ class CommandBot:
         self.offset: Optional[int] = None
         self._stop = False
         self.menu: dict = {}            # chat -> "main" | "more" (القسم الظاهر حاليًا)
+        self.free_text = None           # اختياري: دالة(text, chat) -> رد أو None (أسئلة حرة للمساعد)
         self._tasks: set = set()
 
     def stop(self):
@@ -190,6 +191,13 @@ class CommandBot:
             raw = target
         parts = raw.split()
         if not parts[0].startswith("/"):
+            if self.free_text is not None:
+                try:
+                    r = self.free_text(raw, chat)
+                    if r:
+                        return r
+                except Exception:
+                    log.exception("فشل الرد على سؤال حر")
             return "اختر من الأزرار بالأسفل 👇 أو اكتب /help"
         cmd = parts[0].split("@")[0].lower()
         if cmd == "/start":

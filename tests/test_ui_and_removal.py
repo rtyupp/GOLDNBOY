@@ -159,12 +159,13 @@ class TestAiNewsRemoved(unittest.TestCase):
     def test_env_and_requirements_clean(self):
         env = open(os.path.join(ROOT, ".env.example"), encoding="utf-8").read()
         req = open(os.path.join(ROOT, "requirements.txt"), encoding="utf-8").read()
-        for bad in ("GEMINI", "API_KEY", "EVENTS", "OPENAI", "ANTHROPIC"):
+        for bad in ("GEMINI", "EVENTS", "OPENAI", "ANTHROPIC"):
             self.assertNotIn(bad, env)
         self.assertNotIn("scikit", req.lower())
         for line in env.splitlines():                        # لا قيم سرية حقيقية
             if "=" in line and not line.startswith("#"):
                 self.assertEqual(line.split("=", 1)[1].strip() in ("", "paper", "live"), True, line)
+        self.assertIn("DEEPSEEK_API_KEY=", env)
 
     def test_no_secret_like_strings_in_code(self):
         pat = re.compile(r"\d{8,10}:[A-Za-z0-9_-]{30,}|AIza[0-9A-Za-z_-]{30,}|sk-[A-Za-z0-9]{20,}")

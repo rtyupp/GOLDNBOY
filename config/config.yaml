@@ -117,6 +117,15 @@ backtest:
   steps: {1m: 5, 5m: 1, 15m: 1}
   report_dir: reports
 
+assist:                     # مساعد DeepSeek: شرح الإشارة + ملخص يومي/أسبوعي + إجابة الأسئلة. لا يقرر ولا يغيّر الصفقات.
+  enabled: true             # يعمل تلقائيًا متى وُجد DEEPSEEK_API_KEY في البيئة (بدونه يصمت)
+  base_url: https://api.deepseek.com
+  model: deepseek-v4-flash  # أسماء deepseek-chat/reasoner أُلغيت في 2026-07-24؛ يمكن تجاوزه بمتغير DEEPSEEK_MODEL
+  timeout_sec: 25
+  max_tokens: 900
+  max_calls_per_day: 150    # سقف تكلفة يومي
+  summary_hour_utc: 20      # الملخص اليومي (والأسبوعي أيام الجمعة) بعد إغلاق لندن/نيويورك تقريبًا
+
 resources:
   gc_at: 0.75               # تنظيف الذاكرة عند هذه النسبة من حد الحاوية
 
