@@ -6,19 +6,36 @@ import asyncio, json, logging, os, sys, time
 from typing import Awaitable, Callable, Optional, Tuple
 import pandas as pd
 
+from goldbot import resources
+
 log = logging.getLogger("bootstrap")
 
 
-async def _default_runner(cmd: list, log_path: str, timeout: float) -> Tuple[int, str]:
+MEM_KILL = -137          # رمز: أُوقفت العملية حمايةً للخدمة من نفاد الذاكرة
+
+
+async def _default_runner(cmd: list, log_path: str, timeout: float, mem_kill_frac: float = 0.85) -> Tuple[int, str]:
+    """يشغّل العملية الفرعية ويراقب ذاكرة الحاوية كل 5 ثوانٍ؛ إن تجاوزت mem_kill_frac من الحد توقفها بدل أن تقتل Render الخدمة كلها."""
     os.makedirs(os.path.dirname(log_path) or ".", exist_ok=True)
+    env = dict(os.environ, MALLOC_ARENA_MAX="2")
     with open(log_path, "ab") as lf:
-        proc = await asyncio.create_subprocess_exec(*cmd, stdout=lf, stderr=asyncio.subprocess.STDOUT,
+        proc = await asyncio.create_subprocess_exec(*cmd, stdout=lf, stderr=asyncio.subprocess.STDOUT, env=env,
                                                     preexec_fn=(lambda: os.nice(10)) if hasattr(os, "nice") else None)
-        try:
-            await asyncio.wait_for(proc.wait(), timeout)
-        except asyncio.TimeoutError:
-            proc.kill()
-            return -9, "انتهت المهلة"
+        deadline = time.time() + timeout
+        waiter = asyncio.ensure_future(proc.wait())
+        while True:
+            done, _ = await asyncio.wait({waiter}, timeout=5)
+            if done:
+                break
+            pr = resources.pressure()
+            if pr is not None and pr >= mem_kill_frac:
+                proc.kill()
+                await proc.wait()
+                return MEM_KILL, f"الذاكرة {pr:.0%} من الحد"
+            if time.time() > deadline:
+                proc.kill()
+                await proc.wait()
+                return -9, "انتهت المهلة"
     try:
         tail = open(log_path, "rb").read()[-600:].decode("utf-8", "ignore")
     except OSError:
@@ -74,16 +91,26 @@ class Bootstrapper:
         self.running = True
         notify = self.app.notify_q.put_nowait
         try:
-            days = int(self.cfg.get("bootstrap.days", 45))
-            tfs = list(self.cfg.get("bootstrap.tfs", ["5m", "15m"]))
+            plan = resources.plan_bootstrap(self.cfg)
+            if not plan["run"]:
+                self.last_summary = f"تأجّلت التهيئة: {plan['why']}"
+                notify(f"ℹ️ {self.last_summary}. البوت يعمل بشكل طبيعي بدونها، والاحتمال التاريخي يُكتب «غير كافٍ».")
+                return False
+            days, tfs = plan["days"], plan["tfs"]
             cfg_path = self.cfg.get("_config_path", "config/config.yaml")
-            notify(f"🧠 بدأت التهيئة الذاتية: أبني السجل التاريخي من آخر {days} يومًا ({', '.join(tfs)}).\n"
-                   "تستغرق 5–20 دقيقة وتعمل في الخلفية؛ السعر اللحظي والأوامر تعمل كالمعتاد.")
+            notify(f"🧠 بدأت التهيئة الذاتية ({plan['why']}): أبني السجل من آخر {days} يومًا ({', '.join(tfs)}).\n"
+                   "تعمل في الخلفية وأراقب الذاكرة؛ السعر اللحظي والأوامر تعمل كالمعتاد.")
             log_path = os.path.join(self.cfg.get("paths.log_dir", "logs"), "bootstrap.log")
             for tf in tfs:
                 t0 = time.time()
                 rc, tail = await self.runner([sys.executable, "-m", "goldbot", "backtest", "--tf", tf, "--days", str(days), "--store",
                                               "--config", cfg_path], log_path, float(self.cfg.get("bootstrap.timeout_sec", 5400)))
+                if rc == MEM_KILL:
+                    msg = (f"⚠️ أوقفت التهيئة حمايةً للخدمة ({tail}). البوت يعمل بدونها. "
+                           "لتفعيلها: قلّل bootstrap.low_mem_days أو ارفع خطة Render.")
+                    self.last_summary = msg
+                    notify(msg)
+                    return False
                 if rc != 0:
                     msg = f"⚠️ فشل بناء السجل لفريم {tf} (رمز {rc}). التفاصيل في logs/bootstrap.log"
                     self.last_summary = msg

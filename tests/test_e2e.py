@@ -62,7 +62,10 @@ class TestE2E(unittest.IsolatedAsyncioTestCase):
 
     async def test_stale_data_gives_no_trade_with_reason(self):
         app = BotApp(cfg(paths__journal=os.path.join(tempfile.mkdtemp(), "j.sqlite"), paths__log_dir=tempfile.mkdtemp()), tg=FakeTG(), history_provider=SyntheticHistory())
-        cand = await app.cycle()
+        from unittest import mock
+        import pandas as pd
+        with mock.patch("goldbot.app.pd.Timestamp.now", return_value=pd.Timestamp("2026-10-13 10:00", tz="UTC")):   # الثلاثاء: السوق مفتوح
+            cand = await app.cycle()
         self.assertEqual(cand.log.final, "NO TRADE")
         self.assertIn("NO_TICK_YET", cand.log.reasons)
         self.assertEqual(app.journal.stats()["total"], 0)

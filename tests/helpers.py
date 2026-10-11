@@ -8,6 +8,7 @@ def cfg(**over):
     # Integration tests with FakeTG exercise the delivery path explicitly;
     # production config remains paper-by-default for safety.
     c.set("mode", "live")
+    c.set("bootstrap.adaptive", False)       # الاختبارات لا تتأثر بذاكرة الجهاز؛ التكيّف يُختبر في test_resources
     for k, v in over.items():
         c.set(k.replace("__", "."), v)
     return c

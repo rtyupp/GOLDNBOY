@@ -40,7 +40,7 @@ DETAIL_REPL = [("wr=", "نسبة الربح "), ("avgR=", "متوسط R "), ("n=
                ("RR2=", "RR2 "), ("min", "د"), ("ATR", "ATR")]
 REASONS = {
     "NO_TICK_YET": "لم يصل أي سعر لحظي بعد", "WS_DISCONNECTED": "الاتصال اللحظي (WebSocket) منقطع",
-    "STALE_DATA": "بيانات السعر قديمة", "NO_QUOTE": "لا يوجد سعر Bid/Ask", "NO_CANDLES": "لا توجد شموع كافية",
+    "MARKET_CLOSED": "السوق مغلق (عطلة نهاية الأسبوع) — يستأنف التحليل تلقائيًا عند الافتتاح", "STALE_DATA": "بيانات السعر قديمة", "NO_QUOTE": "لا يوجد سعر Bid/Ask", "NO_CANDLES": "لا توجد شموع كافية",
     "CANDLE_GAP": "فجوة في الشموع", "INSUFFICIENT_HISTORY": "بيانات تاريخية غير كافية", "NO_ANALYSIS": "لا يوجد تحليل",
     "SPREAD_HIGH": "السبريد مرتفع", "SPREAD_VS_RISK": "السبريد كبير مقارنة بالمخاطرة", "HTF_CONFLICT": "تعارض اتجاه الفريمات الكبيرة (4H مقابل 1H)",
     "CHOPPY_MARKET": "سوق متذبذب بلا اتجاه واضح", "OFF_HOURS": "خارج جلسات التداول", "NO_SETUP": "لا يوجد إعداد مكتمل",

@@ -1,6 +1,7 @@
 """Wires everything together. Live price path is independent of history/analysis/Telegram failures.
 لا يوجد ذكاء اصطناعي ولا مصدر أخبار: القرار من الاستراتيجيات والمؤشرات وإدارة المخاطر فقط."""
 from __future__ import annotations
+import gc
 import asyncio, json, logging, os, time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
@@ -8,6 +9,7 @@ import pandas as pd
 
 from goldbot.bootstrap import Bootstrapper
 from goldbot.commands import build_handlers
+from goldbot import resources
 from goldbot.config import Cfg, env
 from goldbot import i18n as T
 from goldbot.core.candle_builder import CandleBuilder
@@ -98,6 +100,10 @@ class BotApp:
             tk = self.ticks.last
             if tk is not None and tk.has_quote:
                 self.tracker.check_expiry(pd.Timestamp.now(tz="UTC"), tk.bid, tk.ask)
+            pr = resources.pressure()
+            if pr is not None and pr >= float(self.cfg.get("resources.gc_at", 0.75)):
+                gc.collect()                         # حارس الذاكرة: تنظيف قبل أن تقتل Render الخدمة
+                log.warning("ضغط ذاكرة %.0f%% من الحد — تم التنظيف", pr * 100)
             await asyncio.sleep(60)
 
     # ------------------------------------------------------------------ one analysis cycle
@@ -124,6 +130,9 @@ class BotApp:
         self.builder.flush(int(now.timestamp() * 1000))
         as_of = now.floor("1min")
         ok, why = self.data_status(as_of)
+        closed = (not ok) and resources.market_closed(now) and why.startswith(("STALE_DATA", "NO_TICK_YET", "WS_DISCONNECTED", "CANDLE_GAP"))
+        if closed:
+            why = "MARKET_CLOSED"
         tk = self.ticks.last
         bid, ask = (tk.bid, tk.ask) if (tk and tk.has_quote) else (0.0, 0.0)
         frames = await asyncio.to_thread(self.md.frames, as_of) if ok else {}
@@ -137,7 +146,13 @@ class BotApp:
         elif not cand.log.final.endswith("SENT"):
             cand.log.final = "NO TRADE"
             cand.log.reasons = cand.reasons
-        self.recorder.record(cand.log)
+        if closed:                                   # لا نملأ السجل كل دقيقة أثناء العطلة: مرة كل 30 دقيقة
+            last = getattr(self, "_closed_log_ts", None)
+            if last is None or (now - last).total_seconds() >= 1800:
+                self._closed_log_ts = now
+                self.recorder.record(cand.log)
+        else:
+            self.recorder.record(cand.log)
         return cand
 
     def _apply_limits(self, cand, as_of):

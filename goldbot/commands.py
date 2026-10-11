@@ -1,5 +1,6 @@
 """أوامر تيليجرام بالعربي (أسماء الأوامر لاتينية لأن تيليجرام يشترط ذلك)."""
 from __future__ import annotations
+from goldbot import resources
 import time
 import pandas as pd
 from goldbot import i18n as T
@@ -7,6 +8,13 @@ from goldbot import i18n as T
 
 def _age(a):
     return "غير متاح" if a is None else f"{a:.1f} ثانية"
+
+
+def _mem_txt() -> str:
+    lim, use = resources.limit_mb(), resources.usage_mb()
+    if use is None:
+        return "غير معروفة"
+    return f"{use:.0f}/{lim:.0f}MB" if lim else f"{use:.0f}MB"
 
 
 def build_handlers(app) -> dict:
@@ -36,6 +44,7 @@ def build_handlers(app) -> dict:
             f"السعر اللحظي: {'حديث ✅' if fresh else 'غير صالح ❌ (' + T.reason_ar(why) + ')'}   عمر آخر تحديث: {_age(t.age_sec())}",
             f"الشموع: {app.md.summary()}",
             f"البيانات التاريخية: {hist}",
+            f"السوق: {'مغلق (عطلة نهاية الأسبوع)' if resources.market_closed(pd.Timestamp.now(tz='UTC')) else 'مفتوح'}   الذاكرة: {_mem_txt()}",
             f"الوضع: {'حقيقي' if app.cfg.get('mode') == 'live' else 'تجريبي (بدون إرسال)'}   الاستراتيجيات: {len(app.pipeline.strategies)}",
             f"التهيئة الذاتية: {'قيد التنفيذ ⏳' if app.bootstrap.running else app.bootstrap.last_summary}   سجل الاحتمال: {app.bootstrap.backtest_trades()} صفقة",
             f"وجهة الإشارات: {({'private': 'المحادثة الخاصة', 'channel': 'القناة', 'both': 'الخاص والقناة'}).get(app.tg.target if app.tg else '', 'لا يوجد')}",
