@@ -108,8 +108,11 @@ class Telegram:
         self.sent += 1 if r else 0
         return r
 
-    def send_photo(self, chat_id, png: bytes, caption: str = ""):
-        r = self._call("sendPhoto", chat_id=chat_id, caption=caption[:1000], files={"photo": ("chart.png", png, "image/png")}, timeout=60)
+    def send_photo(self, chat_id, png: bytes, caption: str = "", menu: Optional[str] = None):
+        kw = dict(chat_id=chat_id, caption=caption[:1000], files={"photo": ("chart.png", png, "image/png")}, timeout=60)
+        if menu and is_private_chat(chat_id):
+            kw["reply_markup"] = reply_keyboard(menu)
+        r = self._call("sendPhoto", **kw)
         self.sent += 1 if r else 0
         return r
 
@@ -226,15 +229,20 @@ class CommandBot:
         if self.tg.admin_ids and uid not in self.tg.admin_ids:
             return                                        # تجاهل الغرباء بصمت
         reply = self.handle_text(text, chat)
-        if reply:
-            self._send(chat, reply)
+        png = None
         if cmd == "/price" and self.chart_for_command is not None:
             try:
                 png = self.chart_for_command()
-                if png:
-                    self.tg.send_photo(chat, png, "السعر اللحظي — شارت 5m")
             except Exception:
                 log.exception("فشل إرسال شارت السعر")
+        if reply and png:
+            # السعر يظهر داخل Caption الصورة، فتصل المعلومات والشارت في رسالة واحدة.
+            try:
+                self.tg.send_photo(chat, png, reply, menu=self.menu_for(chat))
+            except TypeError:  # توافق مع واجهات Telegram الاختبارية القديمة
+                self.tg.send_photo(chat, png, reply)
+        elif reply:
+            self._send(chat, reply)
 
     def _send(self, chat, reply: str):
         try:
