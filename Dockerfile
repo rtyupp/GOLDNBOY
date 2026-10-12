@@ -1,6 +1,7 @@
 FROM node:22-bookworm-slim AS history-builder
 WORKDIR /build
 COPY vendor/dukascopy-node/package.json vendor/dukascopy-node/pnpm-lock.yaml vendor/dukascopy-node/pnpm-workspace.yaml ./
+COPY vendor/dukascopy-node/tsconfig.json ./
 COPY vendor/dukascopy-node/src ./src
 RUN npm install --global pnpm@10.12.4 && pnpm install --frozen-lockfile && pnpm build
 
