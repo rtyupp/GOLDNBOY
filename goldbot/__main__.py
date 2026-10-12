@@ -50,7 +50,11 @@ def cmd_run(cfg):
 def _history_1m(cfg, days):
     from goldbot.providers.factory import make_history_provider
     from goldbot.core.history_store import load_cached
-    return load_cached(make_history_provider(cfg), cfg.get("symbol", "XAUUSD"), "1m", days, cfg.get("data.cache_dir", "data/cache"))
+    provider = make_history_provider(cfg)
+    cap = provider.max_history_days("1m")
+    if cap and days > cap:
+        days = cap          # the source cannot serve deeper than this; ask for what exists
+    return load_cached(provider, cfg.get("symbol", "XAUUSD"), "1m", days, cfg.get("data.cache_dir", "data/cache"))
 
 
 def cmd_backtest(cfg, a):

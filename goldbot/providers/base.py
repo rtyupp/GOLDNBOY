@@ -13,3 +13,11 @@ class HistoryProvider:
     def fetch(self, interval: str, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
         """Return df indexed by UTC bar-open time with open/high/low/close/volume."""
         raise NotImplementedError
+
+    def max_history_days(self, interval: str):
+        """Deepest lookback the source can actually serve for an interval, or None if unbounded.
+
+        Callers clamp their request to this so a config asking for more than the source keeps
+        does not silently return a truncated (or empty) window.
+        """
+        return None

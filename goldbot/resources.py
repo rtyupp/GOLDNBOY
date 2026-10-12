@@ -67,14 +67,17 @@ def plan_bootstrap(cfg) -> dict:
     days = int(cfg.get("bootstrap.days", 45))
     tfs = list(cfg.get("bootstrap.tfs", ["5m", "15m"]))
     lim = limit_mb()
+    # The Analyzer needs 60 closed 4H bars (~10 days) plus warmup before any bar is evaluated,
+    # so a shorter window produces ZERO trades no matter what. Never plan below this floor.
+    floor = int(cfg.get("bootstrap.min_days", 16))
     if lim is None or not cfg.get("bootstrap.adaptive", True):
-        return {"run": True, "days": days, "tfs": tfs, "limit_mb": lim, "why": "بلا قيد ذاكرة معروف"}
+        return {"run": True, "days": max(days, floor), "tfs": tfs, "limit_mb": lim, "why": "بلا قيد ذاكرة معروف"}
     if lim < 400:
         return {"run": False, "days": 0, "tfs": [], "limit_mb": lim, "why": f"الذاكرة {lim:.0f}MB لا تكفي للتهيئة"}
     if lim < 1000:                                    # الخطة المجانية (512MB)
-        days, tfs = min(days, int(cfg.get("bootstrap.low_mem_days", 7))), ["15m"]
+        days, tfs = max(min(days, int(cfg.get("bootstrap.low_mem_days", 21))), floor), ["5m", "15m"]
     elif lim < 2000:
-        days, tfs = min(days, 21), tfs[:2]
+        days, tfs = max(min(days, 21), floor), tfs[:2]
     use = usage_mb()
     if use is not None and lim - use < float(cfg.get("bootstrap.min_free_mb", 150)):
         return {"run": False, "days": days, "tfs": tfs, "limit_mb": lim,

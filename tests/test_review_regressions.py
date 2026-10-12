@@ -126,6 +126,38 @@ class TestUserAgentOverride(unittest.TestCase):
         self.assertEqual(d.s.headers["User-Agent"], "my-custom-agent")
 
 
+class TestBootstrapWindow(unittest.TestCase):
+    """التهيئة الذاتية على الذاكرة القليلة كانت تبني 7 أيام → المحلل يحتاج 60 شمعة 4H ≈ 10 أيام فينتج 0 صفقة."""
+
+    def test_plan_never_schedules_a_zero_trade_window(self):
+        from goldbot import resources
+        c = cfg()
+        with mock.patch.object(resources, "limit_mb", return_value=512), \
+                mock.patch.object(resources, "usage_mb", return_value=150):
+            plan = resources.plan_bootstrap(c)
+        self.assertTrue(plan["run"])
+        self.assertGreaterEqual(plan["days"], 16)      # 60 شمعة 4H ≈ 10 أيام + إحماء
+        self.assertIn("5m", plan["tfs"])               # 15m وحده لا يصل لعتبة الالتقاء في مدى Yahoo
+
+    def test_unreachable_min_trades_no_longer_loops(self):
+        c = cfg()
+        min_trades = int(c.get("bootstrap.min_trades", 150))
+        # 28 يومًا (حد 1m في Yahoo) تُنتج نحو 30 صفقة؛ العتبة يجب أن تكون قابلة للتحقيق وإلا أُعيد البناء أبدًا
+        self.assertLessEqual(min_trades, 30)
+
+
+class TestBacktestWarmupScaling(unittest.TestCase):
+    """الإحماء الثابت (12 يومًا) كان يبتلع نافذة قصيرة كاملة فلا يُقيَّم أي شمعة → 0 صفقات."""
+
+    def test_short_window_still_evaluates_some_bars(self):
+        from goldbot.backtest.engine import run_backtest
+        from goldbot.providers.synthetic import make_synthetic_1m
+        c = cfg()
+        df = make_synthetic_1m(days=16, seed=5)
+        res = run_backtest(df, c, "5m", warmup_days=12)
+        self.assertGreater(res["evals"], 0)            # لا يمكن أن تُستهلك كل النافذة إحماءً
+
+
 class TestYahooHistory(unittest.TestCase):
     """مزوّد Yahoo البديل: يحوّل رد chart إلى OHLCV ويُعيد التجميع بمفاتيح الأطر الصحيحة."""
 
