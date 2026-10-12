@@ -223,6 +223,9 @@ class CommandBot:
             return
         text = m.get("text", "")
         cmd = (text.strip().split() or [""])[0].split("@")[0].lower()
+        # أزرار ReplyKeyboard ليست أوامر نصية؛ نستخرج الأمر المقابل لها أيضاً.
+        button_cmd = _BUTTON_NORM.get(_norm(text))
+        effective_cmd = button_cmd if button_cmd and button_cmd.startswith("/") else cmd
         if cmd == "/id":                                  # مفتوح للجميع: ليعرف المستخدم رقمه ويضعه في الإعدادات
             self.tg.send_message(chat, f"رقم حسابك (TELEGRAM_ADMIN_IDS): {uid}\nرقم هذه المحادثة: {chat}")
             return
@@ -230,7 +233,7 @@ class CommandBot:
             return                                        # تجاهل الغرباء بصمت
         reply = self.handle_text(text, chat)
         png = None
-        if cmd == "/price" and self.chart_for_command is not None:
+        if effective_cmd == "/price" and self.chart_for_command is not None:
             try:
                 png = self.chart_for_command()
             except Exception:
