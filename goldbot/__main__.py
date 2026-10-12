@@ -112,11 +112,13 @@ def cmd_check(cfg):
         print("Swissquote (لحظي)    : فشل ❌", type(e).__name__, e)
     try:
         from goldbot.providers.factory import make_history_provider
+        provider = make_history_provider(cfg)
+        label = type(provider).__name__
         end = pd.Timestamp.now(tz="UTC").floor("h") - pd.Timedelta(hours=1)
-        df = make_history_provider(cfg).fetch("1m", end - pd.Timedelta(hours=48), end)
-        print("Dukascopy (تاريخي)   :", f"نجح ✅ ({len(df)} شمعة 1m خلال آخر 48 ساعة)" if len(df) else "لا توجد شموع (تحقق من الشبكة، أو السوق مغلق/عطلة)")
+        df = provider.fetch("1m", end - pd.Timedelta(hours=48), end)
+        print(f"{label} (تاريخي):", f"نجح ✅ ({len(df)} شمعة 1m خلال آخر 48 ساعة)" if len(df) else "لا توجد شموع (تحقق من الشبكة، أو السوق مغلق/عطلة)")
     except Exception as e:
-        print("Dukascopy (تاريخي)   : فشل ❌", type(e).__name__, e)
+        print("المصدر التاريخي      : فشل ❌", type(e).__name__, e)
 
 
 def main(argv=None):

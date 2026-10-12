@@ -106,5 +106,87 @@ class TestFreeTextLogsErrors(unittest.TestCase):
         app.assist.ask.assert_called_once()
 
 
+class TestUserAgentOverride(unittest.TestCase):
+    """setdefault على جلسة requests لا يعمل: الجلسة تحمل UA افتراضي python-requests فيحجب Dukascopy."""
+
+    def test_default_session_user_agent_is_overridden(self):
+        import requests
+
+        from goldbot.providers.dukascopy import DukascopyHistory
+        d = DukascopyHistory({}, session=requests.Session())
+        self.assertNotIn("python-requests", d.s.headers["User-Agent"].lower())
+
+    def test_custom_user_agent_is_kept(self):
+        import requests
+
+        from goldbot.providers.dukascopy import DukascopyHistory
+        s = requests.Session()
+        s.headers["User-Agent"] = "my-custom-agent"
+        d = DukascopyHistory({}, session=s)
+        self.assertEqual(d.s.headers["User-Agent"], "my-custom-agent")
+
+
+class TestYahooHistory(unittest.TestCase):
+    """مزوّد Yahoo البديل: يحوّل رد chart إلى OHLCV ويُعيد التجميع بمفاتيح الأطر الصحيحة."""
+
+    class Resp:
+        def __init__(self, payload, code=200):
+            self.status_code, self._p = code, payload
+
+        def json(self):
+            return self._p
+
+    class Sess:
+        def __init__(self, payload):
+            self.payload, self.headers = payload, {}
+
+        def get(self, url, params=None, timeout=None):
+            return TestYahooHistory.Resp(self.payload)
+
+    @staticmethod
+    def _window():
+        # نستخدم بيانات قريبة من الآن لأن Yahoo يقصّ النوافذ الأقدم من نطاق الاحتفاظ
+        start = pd.Timestamp.now(tz="UTC").floor("h") - pd.Timedelta(hours=3)
+        return start, start + pd.Timedelta(minutes=90)
+
+    @classmethod
+    def _payload(cls, mins=90):
+        base, _ = cls._window()
+        ts = [int((base + pd.Timedelta(minutes=i)).timestamp()) for i in range(mins)]
+        o = [2000.0 + i * 0.1 for i in range(mins)]
+        return {"chart": {"error": None, "result": [{
+            "timestamp": ts,
+            "indicators": {"quote": [{"open": o, "high": [x + 1 for x in o],
+                                      "low": [x - 1 for x in o], "close": [x + 0.5 for x in o],
+                                      "volume": [0] * mins}]}}]}}
+
+    def test_parses_chart_payload_to_ohlcv(self):
+        from goldbot.providers.yahoo import YahooHistory
+        start, end = self._window()
+        p = YahooHistory({}, "XAUUSD", session=self.Sess(self._payload()))
+        df = p.fetch("1m", start, end)
+        self.assertEqual(len(df), 90)
+        self.assertEqual(list(df.columns), ["open", "high", "low", "close", "volume"])
+        self.assertAlmostEqual(float(df["high"].iloc[0]), 2001.0)
+
+    def test_resample_uses_valid_timeframe_keys(self):
+        """الخطأ القديم: المفاتيح 5min/15min/1h لا وجود لها في TF_RULES فينهار resample_ohlcv."""
+        from goldbot.providers.yahoo import YahooHistory
+        start, end = self._window()
+        p = YahooHistory({}, "XAUUSD", session=self.Sess(self._payload()))
+        for itv in ("5m", "15m", "30m", "1h"):
+            df = p.fetch(itv, start, end)
+            self.assertFalse(df.empty, itv)
+            self.assertEqual(list(df.columns), ["open", "high", "low", "close", "volume"])
+
+    def test_old_window_is_skipped_not_fatal(self):
+        """نافذة أقدم من احتفاظ Yahoo تُتخطّى بدل رمي استثناء يُفشل كل التحميل."""
+        from goldbot.providers.yahoo import YahooHistory
+        err = {"chart": {"error": {"code": "Unprocessable Entity"}, "result": None}}
+        p = YahooHistory({}, "XAUUSD", session=self.Sess(err))
+        df = p.fetch("1m", pd.Timestamp("2020-01-01", tz="UTC"), pd.Timestamp("2020-01-02", tz="UTC"))
+        self.assertTrue(df.empty)
+
+
 if __name__ == "__main__":
     unittest.main()

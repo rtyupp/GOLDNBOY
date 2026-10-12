@@ -5,8 +5,9 @@ Dukascopy publishes compressed hourly .bi5 files. IMPORTANT: in the URL the mont
 errors) are skipped; a missing hour is never treated as success by FallbackHistory.
 """
 from __future__ import annotations
-import lzma
+
 import logging
+import lzma
 import os
 import struct
 import threading
@@ -43,7 +44,13 @@ class DukascopyHistory(HistoryProvider):
             os.makedirs(self.cache_dir, exist_ok=True)
             self._prune_cache()
         self.s = session or requests.Session()
-        self.s.headers.setdefault("User-Agent", "Mozilla/5.0 goldbot")
+        # requests.Session() already ships a "python-requests/x.y" default, so setdefault()
+        # was a no-op and Dukascopy silently blocked the feed with HTTP 429. Override it
+        # unless the caller supplied their own (non-default) user agent.
+        self.ua = str(cfg.get("user_agent", "Mozilla/5.0 (compatible; goldbot/1.0)"))
+        current_ua = self.s.headers.get("User-Agent", "")
+        if not current_ua or current_ua.lower().startswith("python-requests"):
+            self.s.headers["User-Agent"] = self.ua
         self._lock = threading.Lock()
         self.progress = (0, 0)                    # (hours done, hours total) of the current fetch - shown in /status
         self.stats = {"ok": 0, "missing": 0, "errors": 0}
@@ -217,7 +224,7 @@ class DukascopyHistory(HistoryProvider):
         if out.empty:
             return pd.DataFrame(columns=OHLCV, index=pd.DatetimeIndex([], tz="UTC"))
         if interval != "1m":
-            tf = {"5m": "5min", "15m": "15min", "30m": "30min", "1h": "1h", "1d": "1D"}.get(interval)
+            tf = {"5m": "5m", "15m": "15m", "30m": "30m", "1h": "1H", "1d": "1D"}.get(interval)
             if tf:
                 out = resample_ohlcv(out, tf)[OHLCV]
         return out.astype(float)

@@ -9,7 +9,13 @@ mode: paper                 # آمن افتراضيًا: تسجيل فقط (لا
 
 providers:                  # كل مزوّد بيانات قابل للاستبدال من هنا
   live: swissquote_public    # مصدر عام مجاني بلا API key؛ يبني شموع M1/M5 محليًا
-  history: dukascopy        # Dukascopy tick history مباشرة؛ بدون Node runtime إضافي
+  history: yahoo             # Yahoo Finance العام (GC=F ذهب آجل، ~4 أسابيع من 1m) — أكثر موثوقية من Dukascopy المحجوب غالبًا
+  yahoo:
+    url: https://query1.finance.yahoo.com/v8/finance/chart
+    instrument: GC=F         # XAUUSD (فوري) غير متاح على Yahoo؛ GC=F يتبعه عن قرب
+    timeout_sec: 20
+    retries: 3
+    pause_sec: 0.1
   dukascopy_node:
     instrument: xauusd
     timeout_sec: 300
@@ -49,7 +55,7 @@ render:
 
 data:
   max_tick_age_sec: 20      # أقدم من هذا = لا صفقة
-  history_days: 180        # نطاق أطول لتغطية أنظمة سوق متعددة
+  history_days: 30         # Yahoo يحتفظ بـ1m نحو 4 أسابيع فقط؛ الكاش المحلي يتراكم ليغطي أكثر مع مرور التشغيل
   min_history_rows: 500   # نحو 60 شمعة 4H؛ أقل من ذلك لا يبدأ التحليل
   history_retry_sec: 120    # يتضاعف عند تكرار الفشل (حتى 15 دقيقة)
   cache_dir: data/cache

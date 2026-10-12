@@ -2,11 +2,15 @@
 
 Everything used by default is FREE and needs no API key / account:
   live    -> Swissquote public quotes (bid/ask polling, candles built locally)
-  history -> Dukascopy hourly tick files (converted to 1m OHLCV)
+  history -> Yahoo Finance public chart data (GC=F gold futures; ~4 weeks of 1m)
+The free Dukascopy tick feed remains available (providers.history: dukascopy or
+yahoo_dukascopy) but is frequently rate-limited/blocked from cloud hosts.
 OANDA Practice (free demo account) stays available as an optional alternative.
 """
 from __future__ import annotations
+
 import logging
+
 from goldbot.config import Cfg, env
 
 log = logging.getLogger("providers")
@@ -32,21 +36,30 @@ def make_live_provider(cfg: Cfg, on_tick, on_state):
 
 
 def make_history_provider(cfg: Cfg):
-    kind = cfg.get("providers.history", "dukascopy")
+    kind = cfg.get("providers.history", "yahoo")
     sym = cfg.get("symbol", "XAUUSD")
     if kind in ("dukascopy_node", "dukascopy-node", "dukascopy_v2"):
-        from goldbot.providers.dukascopy_node import DukascopyNodeHistory
         from goldbot.providers.dukascopy import DukascopyHistory, FallbackHistory
+        from goldbot.providers.dukascopy_node import DukascopyNodeHistory
         primary = DukascopyNodeHistory(cfg.section("providers.dukascopy_node"), sym)
         fallback = DukascopyHistory(cfg.section("providers.dukascopy"), sym)
         return FallbackHistory(primary, fallback)
+    if kind in ("yahoo_dukascopy", "hybrid"):
+        # Yahoo is the reliable primary; keep the free Dukascopy tick feed as a secondary source.
+        from goldbot.providers.dukascopy import DukascopyHistory, FallbackHistory
+        from goldbot.providers.yahoo import YahooHistory
+        return FallbackHistory(YahooHistory(cfg.section("providers.yahoo"), sym),
+                               DukascopyHistory(cfg.section("providers.dukascopy"), sym))
     if kind in ("oanda", "oanda_rest"):
         if _oanda_ready():
             from goldbot.providers.oanda import OandaHistory
             return OandaHistory(cfg.section("providers.oanda"), env("OANDA_API_TOKEN"), env("OANDA_ACCOUNT_ID"),
                                 cfg.get("providers.oanda.instrument", "XAU_USD"))
-        log.warning("OANDA credentials missing; using free Dukascopy history instead")
-        kind = "dukascopy"
+        log.warning("OANDA credentials missing; using free Yahoo history instead")
+        kind = "yahoo"
+    if kind == "yahoo":
+        from goldbot.providers.yahoo import YahooHistory
+        return YahooHistory(cfg.section("providers.yahoo"), sym)
     if kind in ("dukascopy", "dukascopy_free"):
         from goldbot.providers.dukascopy import DukascopyHistory
         return DukascopyHistory(cfg.section("providers.dukascopy"), sym)
@@ -56,4 +69,4 @@ def make_history_provider(cfg: Cfg):
     if kind == "synthetic":
         from goldbot.providers.synthetic import SyntheticHistory
         return SyntheticHistory(cfg.section("providers.synthetic"))
-    raise ValueError(f"unknown history provider: {kind} (supported: dukascopy, oanda, csv, synthetic)")
+    raise ValueError(f"unknown history provider: {kind} (supported: yahoo, yahoo_dukascopy, dukascopy, oanda, csv, synthetic)")
