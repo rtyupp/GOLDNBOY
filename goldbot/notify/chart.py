@@ -89,7 +89,7 @@ def render_chart(ctx, plan=None, tf: str = "5m", bars: int = 100, title: str = "
     ax.yaxis.tick_right()
     head = f"{title}  {tf}  |  {ctx.session['label']}  |  {ctx.ts:%Y-%m-%d %H:%M} UTC"
     ax.set_title(head + (f"  |  {plan.direction}" if plan else ""), color=FG, fontsize=11, loc="left")
-    leg = ax.legend(loc="upper left", fontsize=7, facecolor=BG, edgecolor=GRID, labelcolor=FG)
+    ax.legend(loc="upper left", fontsize=7, facecolor=BG, edgecolor=GRID, labelcolor=FG)
     buf = io.BytesIO()
     fig.savefig(buf, format="png", facecolor=BG, bbox_inches="tight")
     plt.close(fig)

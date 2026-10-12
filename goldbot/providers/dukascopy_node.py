@@ -6,7 +6,7 @@ import os
 import subprocess
 from pathlib import Path
 import pandas as pd
-from goldbot.core.timeframes import OHLCV, resample_ohlcv
+from goldbot.core.timeframes import OHLCV
 from goldbot.providers.base import HistoryProvider
 
 log = logging.getLogger("dukascopy_node")

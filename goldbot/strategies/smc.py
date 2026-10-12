@@ -137,9 +137,8 @@ class SmcSweepMssFvg(Strategy):
     key, label = "smc_sweep_mss_fvg", "SMC Sweep-MSS-FVG"
 
     def check(self, ctx, d):
-        s5, s15 = ctx.tf["5m"], ctx.tf["15m"]
+        s5 = ctx.tf["5m"]
         df = s5.df
-        a = max(s5.atr, 1e-9)
         sweeps = sorted([s for s in s5.sweeps if s.expected == d], key=lambda s: s.bars_ago)
         sw = sweeps[0] if sweeps else None
         ch = Checks()

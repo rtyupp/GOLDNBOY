@@ -148,7 +148,7 @@ def mtf_analysis(states: Dict[str, TFState]) -> dict:
     for d in ("bull", "bear"):
         flags = {}
         want = "BULLISH" if d == "bull" else "BEARISH"
-        l15, l5 = s15.last, s5.last
+        l15 = s15.last
         if d == "bull":
             flags["pullback15"] = bool(l15["close"] < l15["ema_20"] or l15["rsi"] < 50 or s15.trend in ("BEARISH", "RANGE"))
             flags["trend15"] = s15.trend == want

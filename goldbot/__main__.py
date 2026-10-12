@@ -1,6 +1,6 @@
 """الأوامر:  python -m goldbot run | backtest | compare | check"""
 from __future__ import annotations
-import argparse, asyncio, json, os, signal, sys
+import argparse, asyncio, os, signal, sys
 import pandas as pd
 from goldbot.config import load_config, env
 from goldbot.monitor import setup_logging
