@@ -9,7 +9,7 @@ mode: paper                 # آمن افتراضيًا: تسجيل فقط (لا
 
 providers:                  # كل مزوّد بيانات قابل للاستبدال من هنا
   live: swissquote_public    # مصدر عام مجاني بلا API key؛ يبني شموع M1/M5 محليًا
-  history: dukascopy_node   # محرك dukascopy-node الجديد (XAUUSD OHLCV)
+  history: dukascopy        # Dukascopy tick history مباشرة؛ بدون Node runtime إضافي
   dukascopy_node:
     instrument: xauusd
     timeout_sec: 300
@@ -49,7 +49,7 @@ render:
 
 data:
   max_tick_age_sec: 20      # أقدم من هذا = لا صفقة
-  history_days: 15         # يلزم 60 شمعة 4H؛ 15 يومًا تغطي الإحماء وفترات إغلاق السوق
+  history_days: 180        # نطاق أطول لتغطية أنظمة سوق متعددة
   min_history_rows: 500   # نحو 60 شمعة 4H؛ أقل من ذلك لا يبدأ التحليل
   history_retry_sec: 120    # يتضاعف عند تكرار الفشل (حتى 15 دقيقة)
   cache_dir: data/cache
@@ -71,7 +71,7 @@ filters:
   allow_off_hours: false
 
 strategies:
-  enabled: [trend_pullback, liquidity_sweep, breakout, reversal, vwap, smc_ote_fvg, smc_sweep_mss_fvg]   # آخر اثنتين: SMC (OTE+FVG) و(Sweep→MSS→FVG)
+  enabled: [trend_pullback, liquidity_sweep, breakout, reversal, vwap, smc_ote_fvg, smc_sweep_mss_fvg]   # الاستراتيجيات السبع متاحة للتقييم والمقارنة
   min_score: 60
 
 confluence:
@@ -106,7 +106,7 @@ tracking:
 
 bootstrap:                  # تهيئة ذاتية: Backtest يبني سجل «الاحتمال التاريخي» في عملية فرعية منخفضة الأولوية
   enabled: true
-  days: 60                  # الحد الأقصى؛ يُخفَّض تلقائيًا إذا كانت الذاكرة قليلة (adaptive)
+  days: 120                 # سجل أطول مع التكيّف مع ذاكرة Render
   tfs: [5m, 15m]            # يُخفَّض إلى 15m فقط على الذاكرة القليلة
   adaptive: true            # يقيس ذاكرة الحاوية ويضبط الأيام/الفريمات ويوقف التهيئة قبل أن تقتل Render الخدمة
   low_mem_days: 7           # أيام التهيئة عندما تكون الذاكرة < 1GB (الخطة المجانية 512MB)
@@ -120,7 +120,7 @@ backtest:
   spread: 0.30              # دولار (التاريخ بلا bid/ask)
   slippage_entry: 0.10      # انزلاق الدخول بالدولار (أسوأ من السعر المخطط)
   slippage_stop: 0.15       # انزلاق إضافي عند ضرب وقف الخسارة (أوامر Stop تنزلق؛ أهداف Limit لا)
-  history_days: 60
+  history_days: 120
   steps: {1m: 5, 5m: 1, 15m: 1}
   report_dir: reports
 

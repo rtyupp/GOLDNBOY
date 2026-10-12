@@ -73,8 +73,7 @@ class TestFactoryIsFree(unittest.TestCase):
             os.environ.pop(k, None)
         cfg = load_config("config/config.yaml")
         provider = make_history_provider(cfg)
-        self.assertIsInstance(provider.primary, DukascopyNodeHistory)
-        self.assertIsInstance(provider.fallback, DukascopyHistory)
+        self.assertIsInstance(provider, DukascopyHistory)
         self.assertIsInstance(make_live_provider(cfg, lambda t: None, lambda s: None), SwissquotePublic)
 
     def test_oanda_without_credentials_falls_back_to_free(self):
