@@ -160,13 +160,13 @@ def format_signal(plan, strategy: str, session: str, confidence: float, prob_tex
 class CommandBot:
     """استقبال الأوامر والأزرار (long polling). handlers: '/cmd' -> دالة(args) ترجع نصًا."""
     PUBLIC = {"/id"}
-
     def __init__(self, tg: Telegram, handlers: dict):
         self.tg, self.handlers = tg, handlers
         self.offset: Optional[int] = None
         self._stop = False
         self.menu: dict = {}            # chat -> "main" | "more" (القسم الظاهر حاليًا)
         self.free_text = None           # اختياري: دالة(text, chat) -> رد أو None (أسئلة حرة للمساعد)
+        self.chart_for_command = None   # callback اختياري: /price -> PNG bytes
         self._tasks: set = set()
 
     def stop(self):
@@ -228,6 +228,13 @@ class CommandBot:
         reply = self.handle_text(text, chat)
         if reply:
             self._send(chat, reply)
+        if cmd == "/price" and self.chart_for_command is not None:
+            try:
+                png = self.chart_for_command()
+                if png:
+                    self.tg.send_photo(chat, png, "السعر اللحظي — شارت 5m")
+            except Exception:
+                log.exception("فشل إرسال شارت السعر")
 
     def _send(self, chat, reply: str):
         try:

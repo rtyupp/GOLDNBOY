@@ -51,6 +51,7 @@ class BotApp:
         self.cmd = CommandBot(tg, self._handlers) if tg else None
         if self.cmd:
             self.cmd.free_text = self._free_text
+            self.cmd.chart_for_command = self._price_chart
         self._summary_sent: set = set()
         self.live = None
         self._tasks: list = []
@@ -218,6 +219,15 @@ class BotApp:
                 self.notify_q.put_nowait(f"📝 شرح الإشارة #{sid}\n{text}")
         except Exception:
             log.exception("فشل شرح الإشارة (الإشارة نفسها أُرسلت)")
+
+    def _price_chart(self):
+        """يرسم شارت السعر عند الضغط على زر السعر دون تعطيل الرد النصي."""
+        c = self.last_cand
+        if c is None or c.ctx is None:
+            return None
+        plan = c.best.plan if c.best is not None and getattr(c.best, "plan", None) is not None else None
+        return render_chart(c.ctx, plan, self.cfg.get("telegram.chart_tf", "5m"),
+                            int(self.cfg.get("telegram.chart_bars", 100)))
 
     # ------------------------------------------------------------------ الأسئلة الحرة (بدون زر: أي نص عادي)
     def _free_text(self, text: str, chat=None):
