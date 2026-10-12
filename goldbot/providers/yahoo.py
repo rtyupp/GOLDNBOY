@@ -106,6 +106,9 @@ class YahooHistory(HistoryProvider):
         return df[OHLCV]
 
     # ------------------------------------------------------------------ fetch
+    def max_history_days(self, interval: str):
+        return _INTERVALS.get(interval, _INTERVALS["1m"])[1]
+
     def fetch(self, interval: str, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
         start = pd.Timestamp(start)
         end = pd.Timestamp(end)

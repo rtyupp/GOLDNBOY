@@ -111,6 +111,10 @@ def run_backtest(base: pd.DataFrame, cfg, eval_tf: str = "5m", step: int = 1, ma
     ind = {tf: add_indicators(full[tf].drop(columns="close_time"), use_ta).join(full[tf][["close_time"]]) for tf in full}
     arr = {"index": base.index, "high": base["high"].values, "low": base["low"].values, "close": base["close"].values}
     ev = ind[eval_tf]
+    # A fixed warmup swallows short windows whole (e.g. the low-memory bootstrap's 7 days)
+    # and yields zero trades. Scale it to the span, keeping a small floor for causal HTF context.
+    span_days = (base.index[-1] - base.index[0]).total_seconds() / 86400.0
+    warmup_days = min(warmup_days, max(1, int(span_days * 0.34)))
     start_ts = base.index[0] + pd.Timedelta(days=warmup_days)
     ev = ev[ev["close_time"] >= start_ts]
     ev = ev.iloc[::step]
