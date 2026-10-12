@@ -13,6 +13,9 @@ from unittest import mock
 import pandas as pd
 
 from tests.helpers import cfg, mkapp
+from goldbot.tracking.journal import Journal
+from goldbot.tracking.tracker import TradeTracker
+from goldbot.commands import build_handlers
 
 
 class TestHtfLevelsGuard(unittest.TestCase):
@@ -218,6 +221,90 @@ class TestYahooHistory(unittest.TestCase):
         p = YahooHistory({}, "XAUUSD", session=self.Sess(err))
         df = p.fetch("1m", pd.Timestamp("2020-01-01", tz="UTC"), pd.Timestamp("2020-01-02", tz="UTC"))
         self.assertTrue(df.empty)
+
+
+class TestScalpMode(unittest.TestCase):
+    """وضع السكالب: خروج زمني سريع + ملف وضع يحمل عتبات أوسع."""
+
+    def _trade(self, j, ts="2026-06-01T10:00:00+00:00"):
+        return j.add_signal(timestamp=ts, symbol="XAUUSD", direction="BUY", entry=2650.0, sl=2645.0,
+                            tp1=2656.0, tp2=2662.0, strategy="Liquidity Sweep", session="New York", score=80,
+                            historical_probability=None, prob_n=0, risk_level="Low", reason="x",
+                            fingerprint={"setup": "Liquidity Sweep", "direction": "BUY", "session": "New York",
+                                         "htf_bias": "bull", "structure": "BULLISH/BOS", "atr_bucket": "mid",
+                                         "rsi_bucket": "50-65", "liquidity": "sweep", "regime": "BULLISH"},
+                            rr1=1.2, rr2=2.4)
+
+    def test_scalp_time_exit_closes_open_trade(self):
+        j = Journal(os.path.join(tempfile.mkdtemp(), "j.sqlite"))
+        sid = self._trade(j)
+        msgs = []
+        tr = TradeTracker(j, msgs.append, cfg(tracking__scalp_max_minutes=45))
+        tr.check_expiry(pd.Timestamp("2026-06-01T10:50Z"), 2652.0, 2652.3)   # بعد 50 دقيقة (≥45) وسعر +0.4R
+        self.assertEqual(j.get(sid)["result"], "EXPIRED")
+        self.assertTrue(any("خروج سكالب" in m for m in msgs))
+
+    def test_scalp_exit_is_disabled_by_default(self):
+        j = Journal(os.path.join(tempfile.mkdtemp(), "j.sqlite"))
+        sid = self._trade(j)
+        tr = TradeTracker(j, [], cfg())                                     # scalp_max_minutes=0 افتراضيًا
+        tr.check_expiry(pd.Timestamp("2026-06-01T10:50Z"), 2652.0, 2652.3)
+        self.assertEqual(j.get(sid)["status"], "OPEN")
+
+    def test_scalp_profile_widens_thresholds(self):
+        from goldbot.config import load_config
+        c = load_config("config/config.yaml", profile="scalp")
+        self.assertEqual(c.get("_profile"), "scalp")
+        self.assertLess(c.get("strategies.min_score"), load_config("config/config.yaml").get("strategies.min_score"))
+        self.assertLess(c.get("confluence.min_score"), load_config("config/config.yaml").get("confluence.min_score"))
+        self.assertGreater(c.get("tracking.scalp_max_minutes"), 0)
+
+    def test_scalp_min_rr2_reaches_risk_plan(self):
+        from goldbot.engine.risk import RiskEngine
+        from goldbot.config import load_config
+        c = load_config("config/config.yaml", profile="scalp")
+        self.assertTrue(RiskEngine(c).min_rr2 <= 1.4)     # العتبة انتقلت من الافتراضي إلى خطة المخاطرة
+
+
+class TestNewStrategiesLoaded(unittest.TestCase):
+    """الاستراتيجيتان المضافتان (ORB والأرقام المستديرة) مُسجَّلتان ولهما ترجمة عربية."""
+
+    def test_opening_range_and_round_number_registered(self):
+        from goldbot.strategies.impl import ALL
+        from goldbot import i18n as T
+        keys = [c.key for c in ALL]
+        self.assertIn("opening_range", keys)
+        self.assertIn("round_number", keys)
+        self.assertIn("Opening Range", T.STRATEGY)
+        self.assertIn("Round Number", T.STRATEGY)
+
+    def test_opening_range_in_enabled_config(self):
+        c = cfg()
+        self.assertIn("opening_range", c.get("strategies.enabled"))
+
+
+class TestWhyCommand(unittest.TestCase):
+    """لوحة التشخيص: تشرح لماذا لا توجد توصية (البوابة التي أوقفتها)."""
+
+    def test_why_reports_gate_when_no_signal(self):
+        c, app = mkapp()
+        cand = SimpleNamespace(ctx=None, best=None, results=[], confluence=0.0,
+                               global_reasons=[], reasons=["CHOPPY_MARKET(ER=0.05)"],
+                               log=SimpleNamespace(ts="2026-06-01 10:00 UTC", final="NO TRADE"))
+        app.last_cand = cand
+        out = build_handlers(app)["/why"]([])
+        self.assertIn("لماذا لا توجد توصية", out)
+        self.assertIn("سوق متذبذب", out)
+
+    def test_why_reports_sent_signal(self):
+        c, app = mkapp()
+        b = SimpleNamespace(signal="BUY", name="Liquidity Sweep")
+        cand = SimpleNamespace(ctx=object(), best=b, results=[b], confluence=75.0,
+                               global_reasons=[], reasons=[],
+                               log=SimpleNamespace(ts="x", final="BUY SENT"))
+        app.last_cand = cand
+        out = build_handlers(app)["/why"]([])
+        self.assertIn("أُرسلت", out)
 
 
 if __name__ == "__main__":

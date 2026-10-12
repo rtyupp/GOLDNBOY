@@ -39,12 +39,21 @@ class Cfg:
         cur[parts[-1]] = value
 
 
-def load_config(path: str = "config/config.yaml", overrides: dict | None = None) -> Cfg:
+def load_config(path: str = "config/config.yaml", overrides: dict | None = None, profile: str | None = None) -> Cfg:
     with open(path, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
+    p = (profile or env("GOLDBOT_PROFILE") or "").strip()
+    if p:
+        # Profile files live next to config.yaml and only override the keys they declare.
+        ppath = os.path.join(os.path.dirname(path) or ".", f"{p}.yaml")
+        if not os.path.exists(ppath):
+            raise FileNotFoundError(f"ملف الوضع غير موجود: {ppath}")
+        with open(ppath, "r", encoding="utf-8") as f:
+            deep_update(data, yaml.safe_load(f) or {})
     if overrides:
         deep_update(data, copy.deepcopy(overrides))
     data["_config_path"] = path
+    data["_profile"] = p or "default"
     return Cfg(data)
 
 

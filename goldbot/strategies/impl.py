@@ -193,6 +193,71 @@ class VwapStrategy(Strategy):
         return ch, inval, {"setup": "VWAP"}
 
 
+class OpeningRange(Strategy):
+    """ORB / session breakout: trade the first close beyond the session opening range (London/NY)."""
+    key, label = "opening_range", "Opening Range"
+
+    def check(self, ctx, d):
+        s15 = ctx.tf["15m"]
+        l = s15.last
+        a = s15.atr
+        px = ctx.mid
+        sess = ctx.session
+        ch = Checks()
+        orng = sess.get("opening_range")
+        ch.add("opening range", orng is not None, 25, True)
+        if orng is None:
+            return ch, None, {"setup": "Opening Range"}
+        orh, orl = orng
+        if d == "bull":
+            broke = px > orh
+            lvl = orh
+            inval = min(orl, float(s15.df["low"].iloc[-3:].min()))
+        else:
+            broke = px < orl
+            lvl = orl
+            inval = max(orh, float(s15.df["high"].iloc[-3:].max()))
+        ch.add("break of opening range", broke, 30, True)
+        ch.add("liquid session", sess.get("label") in ("London", "New York", "London/New York"), 15, True)
+        ch.add("not overextended", abs(px - lvl) <= 1.8 * a, 10)
+        ch.add("volume expansion", float(l["rel_vol"]) >= 1.2, 10)
+        ch.add("HTF not opposing", ctx.mtf["bias"] in (d, "neutral"), 10)
+        mom = (float(l["rsi"]) > 52 and float(l["macd_hist"]) > 0) if d == "bull" else (float(l["rsi"]) < 48 and float(l["macd_hist"]) < 0)
+        ch.add("momentum", mom, 10)
+        return ch, inval, {"setup": "Opening Range", "level": round(lvl, 2)}
+
+
+class RoundNumber(Strategy):
+    """Rejection at psychological whole levels (e.g. $50/$100 steps) with a confirmed candle."""
+    key, label = "round_number", "Round Number"
+
+    def check(self, ctx, d):
+        s15 = ctx.tf["15m"]
+        l = s15.last
+        a = s15.atr
+        px = ctx.mid
+        step = float(self.cfg.get("strategies.round_number.step", 10.0))
+        lvl = round(px / step) * step
+        ch = Checks()
+        ch.add("near round level", abs(px - lvl) <= 0.35 * a, 20, True)
+        win = s15.df.iloc[-4:]
+        if d == "bull":
+            touched = float(win["low"].min()) <= lvl + 0.15 * a
+            rej = float(l["close"]) > lvl and float(l["close"]) > float(l["open"])
+            inval = lvl - 0.5 * a
+        else:
+            touched = float(win["high"].max()) >= lvl - 0.15 * a
+            rej = float(l["close"]) < lvl and float(l["close"]) < float(l["open"])
+            inval = lvl + 0.5 * a
+        ch.add("touched level", touched, 20, True)
+        ch.add("rejection candle", rej, 25, True)
+        ch.add("HTF not opposing", ctx.mtf["bias"] in (d, "neutral"), 15)
+        ch.add("momentum", (float(l["rsi"]) > 50) == (d == "bull"), 10)
+        ch.add("VWAP side", (float(l["close"]) > float(l["vwap"])) == (d == "bull"), 10)
+        return ch, inval, {"setup": "Round Number", "level": round(lvl, 2)}
+
+
 from goldbot.strategies.smc import SmcOteFvg, SmcSweepMssFvg   # noqa: E402  (استراتيجيتا SMC)
 
-ALL = [TrendPullback, LiquiditySweep, Breakout, Reversal, VwapStrategy, SmcOteFvg, SmcSweepMssFvg]
+ALL = [TrendPullback, LiquiditySweep, Breakout, Reversal, VwapStrategy, SmcOteFvg, SmcSweepMssFvg,
+       OpeningRange, RoundNumber]

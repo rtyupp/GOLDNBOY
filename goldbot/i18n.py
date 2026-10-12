@@ -10,7 +10,8 @@ SESSION = {"Asian": "آسيا", "London": "لندن", "New York": "نيويور�
            "Off-hours": "خارج الجلسات"}
 STRATEGY = {"Trend Pullback": "ارتداد مع الاتجاه", "Liquidity Sweep": "اصطياد السيولة", "Breakout": "الاختراق",
             "Reversal": "الانعكاس", "VWAP": "فواب (VWAP)", "SMC OTE + FVG": "OTE + فجوة FVG (SMC)",
-            "SMC Sweep-MSS-FVG": "سحب سيولة ثم MSS ثم FVG (SMC)"}
+            "SMC Sweep-MSS-FVG": "سحب سيولة ثم MSS ثم FVG (SMC)",
+            "Opening Range": "نطاق الافتتاح (ORB)", "Round Number": "الأرقام المستديرة"}
 BREAK = {"BOS": "كسر هيكل BOS", "CHoCH": "تغيّر طابع CHoCH"}
 RESULT = {"SL": "ضرب وقف الخسارة", "TP2": "حقق الهدف الثاني", "TP1_BE": "هدف أول ثم تعادل", "EXPIRED": "انتهت المدة",
           "OPEN": "مفتوحة", "TP1": "بعد الهدف الأول", "CLOSED": "مغلقة"}
@@ -35,6 +36,11 @@ CHECKS = {
     "sweep confirmed": "سحب سيولة مؤكد", "MSS after sweep": "تغيّر هيكل MSS بعد السحب",
     "FVG created by MSS": "فجوة FVG خلقها كسر الهيكل", "price inside FVG": "السعر داخل الفجوة FVG",
     "pool quality": "مستوى سيولة قوي (جلسة/يومي)", "session active": "جلسة نشطة",
+    # ---- ORB + Round Number (goldbot/strategies/impl.py)
+    "opening range": "نطاق الافتتاح", "break of opening range": "إغلاق خارج نطاق الافتتاح",
+    "liquid session": "جلسة ذات سيولة", "not overextended": "غير ممتد بعيدًا عن المستوى",
+    "volume expansion": "توسّع النشاط", "near round level": "قريب من رقم مستدير",
+    "touched level": "ملامسة المستوى", "rejection candle": "شمعة رفض", "VWAP side": "جهة VWAP",
 }
 DETAIL_REPL = [("wr=", "نسبة الربح "), ("avgR=", "متوسط R "), ("n=", "العينة "), ("ER=", "كفاءة الاتجاه "),
                ("RR2=", "RR2 "), ("min", "د"), ("ATR", "ATR")]
