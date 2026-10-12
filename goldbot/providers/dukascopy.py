@@ -228,7 +228,11 @@ class FallbackHistory(HistoryProvider):
         self.primary, self.fallback = primary, fallback
 
     def fetch(self, interval: str, start, end) -> pd.DataFrame:
-        df = self.primary.fetch(interval, start, end)
+        try:
+            df = self.primary.fetch(interval, start, end)
+        except Exception as e:
+            log.warning("فشل مزود التاريخ الأساسي (%s) ← استخدام الاحتياطي", e)
+            return self.fallback.fetch(interval, start, end)
         minutes = max(1, int((pd.Timestamp(end) - pd.Timestamp(start)).total_seconds() / 60))
         factor = {"1m": 1, "5m": 5, "15m": 15, "30m": 30, "1h": 60, "1d": 1440}.get(interval, 1)
         expected = max(10, int((minutes / factor) * 0.25))

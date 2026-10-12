@@ -72,7 +72,9 @@ class TestFactoryIsFree(unittest.TestCase):
         for k in ("SIFTING_API_KEY", "OANDA_API_TOKEN", "OANDA_ACCOUNT_ID"):
             os.environ.pop(k, None)
         cfg = load_config("config/config.yaml")
-        self.assertIsInstance(make_history_provider(cfg), DukascopyNodeHistory)
+        provider = make_history_provider(cfg)
+        self.assertIsInstance(provider.primary, DukascopyNodeHistory)
+        self.assertIsInstance(provider.fallback, DukascopyHistory)
         self.assertIsInstance(make_live_provider(cfg, lambda t: None, lambda s: None), SwissquotePublic)
 
     def test_oanda_without_credentials_falls_back_to_free(self):

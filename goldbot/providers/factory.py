@@ -36,7 +36,10 @@ def make_history_provider(cfg: Cfg):
     sym = cfg.get("symbol", "XAUUSD")
     if kind in ("dukascopy_node", "dukascopy-node", "dukascopy_v2"):
         from goldbot.providers.dukascopy_node import DukascopyNodeHistory
-        return DukascopyNodeHistory(cfg.section("providers.dukascopy_node"), sym)
+        from goldbot.providers.dukascopy import DukascopyHistory, FallbackHistory
+        primary = DukascopyNodeHistory(cfg.section("providers.dukascopy_node"), sym)
+        fallback = DukascopyHistory(cfg.section("providers.dukascopy"), sym)
+        return FallbackHistory(primary, fallback)
     if kind in ("oanda", "oanda_rest"):
         if _oanda_ready():
             from goldbot.providers.oanda import OandaHistory

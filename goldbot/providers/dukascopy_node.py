@@ -52,7 +52,9 @@ class DukascopyNodeHistory(HistoryProvider):
             self.last_error = (r.stdout or r.stderr)[-500:]
             raise RuntimeError("محرك dukascopy-node أعاد بيانات غير صالحة") from e
         if not rows:
-            return pd.DataFrame(columns=OHLCV, index=pd.DatetimeIndex([], tz="UTC"))
+            self.progress = (1, 1)
+            self.last_error = "لم يرجع المحرك أي شموع للفترة المطلوبة"
+            raise RuntimeError("محرك dukascopy-node لم يرجع بيانات تاريخية؛ ستتم إعادة المحاولة لاحقاً")
         df = pd.DataFrame(rows)
         required = ["timestamp", "open", "high", "low", "close"]
         missing = [c for c in required if c not in df.columns]
