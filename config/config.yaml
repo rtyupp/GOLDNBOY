@@ -45,7 +45,7 @@ render:
 
 data:
   max_tick_age_sec: 20      # أقدم من هذا = لا صفقة
-  history_days: 5          # Dukascopy مجاني وعميق؛ 30 يومًا كافٍ للفريمات العليا
+  history_days: 15         # يلزم 60 شمعة 4H؛ 15 يومًا تغطي الإحماء وفترات إغلاق السوق
   min_history_rows: 500   # نحو 60 شمعة 4H؛ أقل من ذلك لا يبدأ التحليل
   history_retry_sec: 120    # يتضاعف عند تكرار الفشل (حتى 15 دقيقة)
   cache_dir: data/cache
