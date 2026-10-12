@@ -1,11 +1,17 @@
 """Guards for the all-free data stack and the Render/Telegram fixes."""
-import asyncio, lzma, struct, unittest
+import asyncio
+import lzma
+import struct
+import unittest
+
 import pandas as pd
+
 from goldbot.config import load_config
+from goldbot.notify.telegram import CommandBot, Telegram
 from goldbot.providers.dukascopy import DukascopyHistory
 from goldbot.providers.factory import make_history_provider, make_live_provider
 from goldbot.providers.swissquote import SwissquotePublic
-from goldbot.notify.telegram import Telegram, CommandBot
+from goldbot.providers.yahoo import YahooHistory
 
 
 class Resp:
@@ -72,7 +78,7 @@ class TestFactoryIsFree(unittest.TestCase):
             os.environ.pop(k, None)
         cfg = load_config("config/config.yaml")
         provider = make_history_provider(cfg)
-        self.assertIsInstance(provider, DukascopyHistory)
+        self.assertIsInstance(provider, YahooHistory)                    # reliable free default
         self.assertIsInstance(make_live_provider(cfg, lambda t: None, lambda s: None), SwissquotePublic)
 
     def test_oanda_without_credentials_falls_back_to_free(self):
@@ -81,8 +87,17 @@ class TestFactoryIsFree(unittest.TestCase):
         cfg = load_config("config/config.yaml")
         cfg.set("providers.live", "oanda")
         cfg.set("providers.history", "oanda")
-        self.assertIsInstance(make_history_provider(cfg), DukascopyHistory)
+        self.assertIsInstance(make_history_provider(cfg), YahooHistory)
         self.assertIsInstance(make_live_provider(cfg, lambda t: None, lambda s: None), SwissquotePublic)
+
+    def test_dukascopy_still_selectable(self):
+        cfg = load_config("config/config.yaml")
+        cfg.set("providers.history", "dukascopy")
+        self.assertIsInstance(make_history_provider(cfg), DukascopyHistory)
+        cfg.set("providers.history", "yahoo_dukascopy")
+        provider = make_history_provider(cfg)
+        self.assertIsInstance(provider.fallback, DukascopyHistory)
+        self.assertIsInstance(provider.primary, YahooHistory)
 
     def test_no_paid_provider_left_in_config(self):
         txt = open("config/config.yaml", encoding="utf-8").read().lower()
