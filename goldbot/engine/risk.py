@@ -55,6 +55,11 @@ class RiskEngine:
             return None, f"SPREAD_VS_RISK({ctx.spread:.2f}/{risk:.2f})"
         sgn = 1 if bull else -1
         tp1, tp2 = entry + sgn * self.rr1 * risk, entry + sgn * self.rr2 * risk
+        # خروج سكالب: إن رُفع مستوى RR1 (هدف أول جزئي) نسحبه للأعلى بحد أدنى آمن ليبقى الهدف الأول قبل الهدف الثاني
+        if self.rr1 > 1.2:
+            t1 = entry + sgn * self.rr1 * risk
+            if abs(t1 - entry) < abs(tp2 - entry):
+                tp1 = t1
         targets = self._targets(ctx, direction, entry)
         if targets:
             d0 = abs(targets[0] - entry)

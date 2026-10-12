@@ -133,8 +133,9 @@ def main(argv=None):
     ap.add_argument("--days", type=int)
     ap.add_argument("--step", type=int)
     ap.add_argument("--store", action="store_true", help="حفظ صفقات الـ Backtest كسجل للاحتمال التاريخي")
+    ap.add_argument("--profile", default=None, help="وضع جاهز يُدمج فوق الإعدادات (مثل scalp) أو GOLDBOT_PROFILE")
     a = ap.parse_args(argv)
-    cfg = load_config(a.config)
+    cfg = load_config(a.config, profile=a.profile)
     apply_env_overrides(cfg)
     setup_logging(cfg.get("log_level", "INFO"), cfg.get("paths.log_dir", "logs"))
     {"run": lambda: cmd_run(cfg), "backtest": lambda: cmd_backtest(cfg, a),

@@ -21,7 +21,7 @@ def build_handlers(app) -> dict:
     def help_(args):
         return ("استخدم الأزرار بالأسفل، أو الأوامر:\n/start  القائمة والترحيب\n/price  السعر اللحظي\n/analysis  التحليل الحالي\n"
                 "/signal  آخر إعداد تم تقييمه\n/market  نظرة متعددة الفريمات\n/stats  الإحصائيات\n/history  آخر الإشارات\n"
-                "/last  آخر إشارة\n/session  الجلسة الحالية\n/status  حالة النظام\n/train  إعادة بناء السجل التاريخي\n/id  رقم حسابك\nأو اكتب أي سؤال عادي عن السوق أو الإشارات")
+                "/last  آخر إشارة\n/why  لماذا لا توجد توصية الآن\n/session  الجلسة الحالية\n/status  حالة النظام\n/train  إعادة بناء السجل التاريخي\n/id  رقم حسابك\nأو اكتب أي سؤال عادي عن السوق أو الإشارات")
 
     def status(args):
         t = app.ticks
@@ -147,6 +147,37 @@ def build_handlers(app) -> dict:
         return (f"الجلسة: {T.SESSION.get(s['label'], s['label'])}\nالأعلى {s['high']}   الأدنى {s['low']}   المدى {None if s['range'] is None else round(s['range'], 2)}\n"
                 f"النطاق الافتتاحي: {orr}\nالاختراق: {bo}")
 
+    def why(args):
+        c = app.last_cand
+        if c is None:
+            return "لم تُنفَّذ دورة تحليل بعد. انتظر دقيقة أو اكتب /status."
+        if c.log.final.endswith("SENT"):
+            b = c.best
+            return f"إشارة أُرسلت الآن: {T.DIR.get(b.signal, b.signal)} — {T.STRATEGY.get(b.name, b.name)}  (الدرجة {c.confluence:.0f})"
+        lines = [f"لماذا لا توجد توصية الآن؟ ({c.log.ts})", ""]
+        if c.ctx is None:
+            lines.append("توقف عند التحليل الأول:")
+            lines.append("• " + T.reasons_ar(c.reasons))
+            return "\n".join(lines)
+        # 1) بوابات لا تعتمد على إعداد
+        lines.append("بوابات السوق: " + ("كلها سليمة ✅" if not c.global_reasons else "✋ " + T.reasons_ar(c.global_reasons)))
+        # 2) أفضل استراتيجية ومدى قربها
+        best = c.best or max(c.results, key=lambda r: r.score) if c.results else None
+        if best is not None:
+            lines.append(f"أقرب إعداد: {T.STRATEGY.get(best.name, best.name)}  ({T.DIR.get(best.signal, 'لا إشارة')} / نتيجة {best.score:.0f}/{app.cfg.get('strategies.min_score', 60)})")
+            lines.append(f"  السبب: {T.strategy_reason_ar(best.reason)[:140]}")
+        # 3) الالتقاء مقابل العتبة
+        thr = app.cfg.get("confluence.min_score", 68.4)
+        lines.append(f"درجة الالتقاء: {c.confluence:.0f} / المطلوب {thr}  " + ("✅" if c.confluence >= thr else "❌"))
+        # 4) بوابات الإعداد + الحدود
+        if c.reasons:
+            lines.append("الموانع: " + T.reasons_ar(c.reasons))
+        # 5) أقرب الاستراتيجيات الأخرى للمقارنة
+        others = sorted([r for r in c.results if r is not best], key=lambda r: -r.score)[:3]
+        if others:
+            lines.append("أقرب بدائل: " + " ؛ ".join(f"{T.STRATEGY.get(r.name, r.name)} {r.score:.0f}" for r in others))
+        return "\n".join(lines)
+
     def train(args):
         if app.bootstrap.running:
             return "التهيئة تعمل الآن، سأخبرك عند الانتهاء."
@@ -157,4 +188,4 @@ def build_handlers(app) -> dict:
         return "🧠 بدأت إعادة بناء السجل التاريخي في الخلفية (5–20 دقيقة)، وسأرسل لك النتيجة."
 
     return {"/train": train, "/help": help_, "/status": status, "/price": price, "/analysis": analysis, "/signal": signal,
-            "/stats": stats, "/history": history, "/last": last, "/market": market, "/session": session}
+            "/stats": stats, "/history": history, "/last": last, "/market": market, "/session": session, "/why": why}

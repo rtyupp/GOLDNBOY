@@ -15,6 +15,8 @@ class TradeTracker:
         self.notify = notify
         self.partial = float(cfg.get("tracking.tp1_partial_pct", 0.5))
         self.max_minutes = float(cfg.get("tracking.max_trade_minutes", 1440))
+        # خروج سكالب زمني: إن كان > 0 نُغلق أي صفقة بلغت هذه المدة (سكالب على 15m: مثلاً 45 دقيقة)
+        self.scalp_minutes = float(cfg.get("tracking.scalp_max_minutes", 0) or 0)
         self.clock = clock
         self._cache = []
         self._cache_ts = 0.0
@@ -77,7 +79,8 @@ class TradeTracker:
     def check_expiry(self, now: pd.Timestamp, bid: float, ask: float):
         for t in self.j.open_trades():
             age = (now - pd.Timestamp(t["timestamp"])).total_seconds() / 60.0
-            if age < self.max_minutes:
+            scalp = self.scalp_minutes > 0 and age >= self.scalp_minutes
+            if age < self.max_minutes and not scalp:
                 continue
             buy = t["direction"] == "BUY"
             px = bid if buy else ask
@@ -88,7 +91,10 @@ class TradeTracker:
             else:
                 r = self.partial * t["rr1"] + (1 - self.partial) * move / risk
             if self.j.transition(t["id"], t["status"], status="CLOSED", result="EXPIRED", r=r, duration_min=age, closed_ts=now.isoformat()):
-                self.notify(f"⏱ انتهت مدة الصفقة #{t['id']} بعد {age / 60:.0f} ساعة  النتيجة: {r:+.2f}R")
+                if scalp:
+                    self.notify(f"⏱ خروج سكالب زمني #{t['id']} بعد {age:.0f} دقيقة  النتيجة: {r:+.2f}R")
+                else:
+                    self.notify(f"⏱ انتهت مدة الصفقة #{t['id']} بعد {age / 60:.0f} ساعة  النتيجة: {r:+.2f}R")
                 self._on_close(t["id"])
 
     def _on_close(self, sid: int):

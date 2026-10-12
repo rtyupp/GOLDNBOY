@@ -77,8 +77,10 @@ filters:
   allow_off_hours: false
 
 strategies:
-  enabled: [trend_pullback, liquidity_sweep, breakout, reversal, vwap, smc_ote_fvg, smc_sweep_mss_fvg]   # الاستراتيجيات السبع متاحة للتقييم والمقارنة
+  enabled: [trend_pullback, liquidity_sweep, breakout, reversal, vwap, smc_ote_fvg, smc_sweep_mss_fvg, opening_range, round_number]   # 9 استراتيجيات: الخمسة الكلاسيكية + SMC + ORB + الأرقام المستديرة
   min_score: 60
+  round_number:
+    step: 10.0            # خطوة الأرقام المستديرة للذهب ($10)؛ للأكبر استخدم 25 أو 50
 
 confluence:
   min_score: 68.4                # = 70 الأصلية بعد حذف بند الأخبار (5 نقاط): الدرجة صارت S×100/95 بدل S+5
@@ -109,6 +111,8 @@ signals:
 tracking:
   tp1_partial_pct: 0.5      # نسبة الإغلاق عند الهدف الأول (لحساب R)
   max_trade_minutes: 1440
+  scalp_max_minutes: 0      # خروج زمني سريع (سكالب): 0 = معطّل؛ مثلاً 45 لإغلاق أي صفقة بعد 45 دقيقة
+  scalp_min_r: 0.0          # أقل ربح (R) مقبول عند الخروج الزمني وإلا يُغلق بالسعر الحالي
 
 bootstrap:                  # تهيئة ذاتية: Backtest يبني سجل «الاحتمال التاريخي» في عملية فرعية منخفضة الأولوية
   enabled: true
