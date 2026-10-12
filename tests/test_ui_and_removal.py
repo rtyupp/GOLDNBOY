@@ -1,5 +1,4 @@
 import json, os, re, unittest
-from goldbot.notify import telegram as tgm
 from goldbot.notify.telegram import (CommandBot, Telegram, BUTTON_COMMANDS, MAIN_ROWS, MORE_ROWS, WELCOME,
                                      reply_keyboard, is_private_chat)
 from goldbot.commands import build_handlers

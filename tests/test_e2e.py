@@ -1,4 +1,4 @@
-import asyncio, os, tempfile, time, unittest
+import os, tempfile, time, unittest
 import pandas as pd
 from tests.helpers import cfg, FakeTG
 from goldbot.app import BotApp
@@ -7,8 +7,6 @@ from goldbot.engine.pipeline import Pipeline
 from goldbot.models import Tick
 from goldbot.providers.synthetic import make_synthetic_1m, SyntheticHistory
 from goldbot.notify.chart import render_chart
-from goldbot.tracking.journal import Journal
-from tests.test_engine import T
 
 
 import copy, functools

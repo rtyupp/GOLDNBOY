@@ -2,7 +2,7 @@ import os, tempfile, unittest
 import numpy as np, pandas as pd
 from tests.helpers import cfg
 from goldbot.models import RiskPlan
-from goldbot.backtest.engine import simulate_trade, metrics, run_backtest, store_probability_history, split_report
+from goldbot.backtest.engine import simulate_trade, metrics, run_backtest, store_probability_history
 from goldbot.providers.synthetic import make_synthetic_1m
 from goldbot.tracking.journal import Journal
 

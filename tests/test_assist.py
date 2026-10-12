@@ -6,7 +6,7 @@ from goldbot.assist import deepseek as D
 from goldbot.assist.deepseek import DeepSeek
 from goldbot.notify.telegram import CommandBot
 from goldbot.commands import build_handlers
-from tests.helpers import cfg, mkapp, FakeTG
+from tests.helpers import cfg, mkapp
 from tests.test_e2e import find_tradable   # noqa  (مولّد مرشح صفقة قابل للإرسال)
 
 KEY = "test-key-not-real"
@@ -151,10 +151,10 @@ class TestIntegration(unittest.IsolatedAsyncioTestCase):
         c, app = mkapp()
         now = pd.Timestamp.now(tz="UTC")
         self.assertIsNone(app.build_summary(now))                     # لا إشارات → لا ملخص
-        sid = app.journal.add_signal(timestamp=now.isoformat(), symbol="XAUUSD", direction="BUY", entry=2000.0, sl=1995.0,
-                                     tp1=2006.0, tp2=2012.0, strategy="Breakout", session="London", score=70,
-                                     historical_probability=None, prob_n=0, risk_level="Low", reason="x", fingerprint={},
-                                     rr1=1.2, rr2=2.4)
+        app.journal.add_signal(timestamp=now.isoformat(), symbol="XAUUSD", direction="BUY", entry=2000.0, sl=1995.0,
+                               tp1=2006.0, tp2=2012.0, strategy="Breakout", session="London", score=70,
+                               historical_probability=None, prob_n=0, risk_level="Low", reason="x", fingerprint={},
+                               rr1=1.2, rr2=2.4)
         res = app.build_summary(now)
         self.assertIn("1 إشارة", res[0])
         with mock.patch.dict(os.environ, {"DEEPSEEK_API_KEY": ""}):

@@ -1,6 +1,6 @@
 import asyncio, json
-import numpy as np, pandas as pd
-from goldbot.config import Cfg, load_config
+import pandas as pd
+from goldbot.config import load_config
 
 
 def cfg(**over):

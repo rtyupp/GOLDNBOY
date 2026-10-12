@@ -4,7 +4,7 @@ import pandas as pd
 
 from goldbot.strategies import smc
 from goldbot.strategies.impl import ALL
-from goldbot.analysis.analyzer import Analyzer, ANALYZED
+from goldbot.analysis.analyzer import Analyzer
 from goldbot.providers.synthetic import make_synthetic_1m
 from goldbot.core.market_data import MarketData
 from tests.helpers import cfg
@@ -67,6 +67,7 @@ class TestStrategiesRun(unittest.TestCase):
         self.assertIn("smc_ote_fvg", keys)
         self.assertIn("smc_sweep_mss_fvg", keys)
         c = cfg()
+        self.assertEqual(c.get("strategies.min_score"), 60)
         from goldbot.config import load_config
         enabled = load_config("config/config.yaml").get("strategies.enabled")
         self.assertIn("smc_ote_fvg", enabled)
