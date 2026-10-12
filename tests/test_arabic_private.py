@@ -1,7 +1,5 @@
-import asyncio, os, tempfile, unittest
-from unittest import mock
-import numpy as np
-from tests.helpers import cfg, FakeTG
+import unittest
+from tests.helpers import FakeTG
 from goldbot import i18n as T
 from goldbot.notify.telegram import Telegram, CommandBot
 from goldbot.monitor import CycleLog

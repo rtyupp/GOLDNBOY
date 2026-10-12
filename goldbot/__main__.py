@@ -63,7 +63,8 @@ def cmd_backtest(cfg, a):
     tfs = ["1m", "5m", "15m"] if a.tf == "all" else [a.tf]
     for tf in tfs:
         step = a.step or int(cfg.get(f"backtest.steps.{tf}", 1))
-        res = run_backtest(base, cfg, tf, step=step, progress=lambda k, n: print(f"  {tf}: {k}/{n}", flush=True))
+        res = run_backtest(base, cfg, tf, step=step,
+                           progress=lambda k, n, tf=tf: print(f"  {tf}: {k}/{n}", flush=True))
         p = save_report(res, cfg.get("backtest.report_dir", "reports"))
         print(f"[{tf}] تم حفظ التقرير: {p}")
         for n, r in res["strategies"].items():

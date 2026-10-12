@@ -1,4 +1,4 @@
-import asyncio, json, time, unittest
+import unittest
 import pandas as pd
 from goldbot.models import Tick
 from goldbot.core.tick_store import TickStore

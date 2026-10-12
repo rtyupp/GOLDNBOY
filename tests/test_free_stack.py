@@ -3,7 +3,6 @@ import asyncio, lzma, struct, unittest
 import pandas as pd
 from goldbot.config import load_config
 from goldbot.providers.dukascopy import DukascopyHistory
-from goldbot.providers.dukascopy_node import DukascopyNodeHistory
 from goldbot.providers.factory import make_history_provider, make_live_provider
 from goldbot.providers.swissquote import SwissquotePublic
 from goldbot.notify.telegram import Telegram, CommandBot

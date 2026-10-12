@@ -1,5 +1,5 @@
-import asyncio, json, os, tempfile, unittest
-import numpy as np, pandas as pd
+import os, tempfile, unittest
+import pandas as pd
 from tests.helpers import cfg, FakeTG
 from goldbot.models import Tick, RiskPlan
 from goldbot.tracking.journal import Journal
@@ -7,7 +7,6 @@ from goldbot.tracking.tracker import TradeTracker
 from goldbot.engine.probability import ProbabilityEngine, wilson
 from goldbot.engine import no_trade
 from goldbot.notify.telegram import CommandBot, format_signal
-from goldbot.engine.risk import RiskEngine
 
 
 def J():

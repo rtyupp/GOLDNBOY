@@ -1,6 +1,5 @@
-import asyncio, json, os, re, subprocess, sys, tempfile, unittest
-import numpy as np, pandas as pd
-from tests.helpers import cfg
+import asyncio, json, os, re, tempfile, unittest
+import pandas as pd
 from tests.helpers import mkapp
 
 

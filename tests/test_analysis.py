@@ -19,7 +19,7 @@ def zigzag(points, per=5):
 class TestStructure(unittest.TestCase):
     def test_bullish_hh_hl_and_bos(self):
         df = zigzag([100, 110, 104, 118, 111, 126, 119, 134])
-        sw = st.find_swings(df, 2, 2)
+        st.find_swings(df, 2, 2)
         res = st.analyze_structure(df, atr=2.0, left=2, right=2)
         self.assertEqual(res["trend"], "BULLISH")
         self.assertEqual(res["labels"], ("HH", "HL"))

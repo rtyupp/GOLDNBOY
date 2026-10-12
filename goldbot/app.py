@@ -238,7 +238,7 @@ class BotApp:
             try:
                 parts.append(f"[{title}]\n{self._handlers[cmd]([])}")
             except Exception:
-                pass
+                log.warning("تعذّر تجهيز «%s» لسياق المساعد", title, exc_info=True)
         closed = resources.market_closed(pd.Timestamp.now(tz="UTC"))
         parts.append(f"[حالة السوق]\n{'مغلق (عطلة نهاية الأسبوع)' if closed else 'مفتوح'}")
         return self.assist.ask(text, "\n\n".join(parts), chat)
