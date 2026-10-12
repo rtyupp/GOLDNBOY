@@ -34,6 +34,9 @@ def make_live_provider(cfg: Cfg, on_tick, on_state):
 def make_history_provider(cfg: Cfg):
     kind = cfg.get("providers.history", "dukascopy")
     sym = cfg.get("symbol", "XAUUSD")
+    if kind in ("dukascopy_node", "dukascopy-node", "dukascopy_v2"):
+        from goldbot.providers.dukascopy_node import DukascopyNodeHistory
+        return DukascopyNodeHistory(cfg.section("providers.dukascopy_node"), sym)
     if kind in ("oanda", "oanda_rest"):
         if _oanda_ready():
             from goldbot.providers.oanda import OandaHistory

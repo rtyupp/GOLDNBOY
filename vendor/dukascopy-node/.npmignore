@@ -1,0 +1,12 @@
+.DS_Store
+.git
+**/__mocks__/**
+**/__tests__/**
+tests
+node_modules
+src/**/*
+dev-utils
+coverage
+.prettierrc
+logo.png
+tsconfig.json

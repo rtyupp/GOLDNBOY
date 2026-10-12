@@ -3,6 +3,7 @@ import asyncio, lzma, struct, unittest
 import pandas as pd
 from goldbot.config import load_config
 from goldbot.providers.dukascopy import DukascopyHistory
+from goldbot.providers.dukascopy_node import DukascopyNodeHistory
 from goldbot.providers.factory import make_history_provider, make_live_provider
 from goldbot.providers.swissquote import SwissquotePublic
 from goldbot.notify.telegram import Telegram, CommandBot
@@ -71,7 +72,7 @@ class TestFactoryIsFree(unittest.TestCase):
         for k in ("SIFTING_API_KEY", "OANDA_API_TOKEN", "OANDA_ACCOUNT_ID"):
             os.environ.pop(k, None)
         cfg = load_config("config/config.yaml")
-        self.assertIsInstance(make_history_provider(cfg), DukascopyHistory)
+        self.assertIsInstance(make_history_provider(cfg), DukascopyNodeHistory)
         self.assertIsInstance(make_live_provider(cfg, lambda t: None, lambda s: None), SwissquotePublic)
 
     def test_oanda_without_credentials_falls_back_to_free(self):

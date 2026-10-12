@@ -1,0 +1,7 @@
+**/node_modules/*
+**/lib/*
+**/bin/*
+**/coverage/*
+**/build/*
+**/dist/*
+**/examples/*

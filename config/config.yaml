@@ -9,7 +9,11 @@ mode: paper                 # آمن افتراضيًا: تسجيل فقط (لا
 
 providers:                  # كل مزوّد بيانات قابل للاستبدال من هنا
   live: swissquote_public    # مصدر عام مجاني بلا API key؛ يبني شموع M1/M5 محليًا
-  history: dukascopy         # تاريخ مجاني بلا مفتاح (ملفات ticks ساعية تتحول إلى شموع 1m)
+  history: dukascopy_node   # محرك dukascopy-node الجديد (XAUUSD OHLCV)
+  dukascopy_node:
+    instrument: xauusd
+    timeout_sec: 300
+    cache_dir: data/cache/dukascopy-node
   dukascopy:
     url: https://datafeed.dukascopy.com/datafeed    # الشهر في الرابط يبدأ من 00 (يعالجه الكود)
     instrument: XAUUSD

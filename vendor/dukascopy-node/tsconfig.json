@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "moduleResolution": "node",
+    "noUnusedParameters": true,
+    "removeComments": false,
+    "sourceMap": true,
+    "strict": true,
+    "target": "es2017",
+    "esModuleInterop": true,
+    "noImplicitAny": true,
+    "resolveJsonModule": true
+  },
+  "exclude": ["node_modules", "build", "bin", "lib", "dist"]
+}
