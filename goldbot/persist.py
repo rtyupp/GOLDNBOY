@@ -45,10 +45,13 @@ def _safe_copy(src: str, dst: str) -> bool:
 
 
 class JournalSync:
-    def __init__(self, cfg, token: Optional[str] = None, session: Optional[requests.Session] = None):
+    def __init__(self, cfg, token: Optional[str] = None, session: Optional[requests.Session] = None,
+                 journal=None):
         p = cfg.section("persistence")
         self.enabled = bool(p.get("enabled", False))
         self.journal_path = cfg.get("paths.journal", "data/journal.sqlite")
+        # Optional live Journal handle: restore() must close its connection before swapping the file.
+        self.journal = journal
         self.filename = p.get("filename", "goldbot-journal.sqlite")
         self.description = p.get("description", "GOLDNBOY journal backup (private)")
         self.interval = float(p.get("interval_min", 30)) * 60
@@ -104,8 +107,18 @@ class JournalSync:
                 content = self.s.get(f["raw_url"], timeout=30).text
             data = base64.b64decode(content)
             os.makedirs(os.path.dirname(self.journal_path) or ".", exist_ok=True)
+            # The app already holds an open WAL connection. Overwriting the main DB file in place
+            # leaves a stale -wal/-shm behind, and SQLite replays it over the restored file — wiping
+            # the very data we just restored. Close the connection and drop the sidecars first.
+            if self.journal is not None:
+                self.journal.close_connection()
+            for sidecar in (self.journal_path + "-wal", self.journal_path + "-shm"):
+                if os.path.exists(sidecar):
+                    os.remove(sidecar)
             with open(self.journal_path, "wb") as fh:
                 fh.write(data)
+            if self.journal is not None:
+                self.journal.reopen()
             self.gist_id = gid
             log.info("تمت استعادة السجل من Gist (%d بايت)", len(data))
             return True
