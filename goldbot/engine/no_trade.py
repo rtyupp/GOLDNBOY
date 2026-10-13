@@ -18,7 +18,7 @@ def global_gates(cfg, ctx, data_ok: bool, data_reason: str) -> List[str]:
         r.append("NO_QUOTE")
     elif ctx.spread > cfg.get("risk.max_spread", 0.8):
         r.append(f"SPREAD_HIGH({ctx.spread:.2f})")
-    if ctx.mtf["bias"] == "conflict":
+    if ctx.mtf["bias"] == "conflict" and not cfg.get("confluence.ignore_htf_conflict", False):
         r.append("HTF_CONFLICT(4H vs 1H)")
     s15 = ctx.tf["15m"]
     er = float(s15.last["er"])

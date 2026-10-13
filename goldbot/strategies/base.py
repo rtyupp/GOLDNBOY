@@ -8,6 +8,11 @@ def opp(d: str) -> str:
     return "bear" if d == "bull" else "bull"
 
 
+def htf_required(cfg) -> bool:
+    """افتراضيًا نشترط موافقة الفريمات الكبيرة؛ وضع السكالب يخفّفها لأن صفقات 15m قصيرة."""
+    return bool(cfg.get("strategies.require_htf_alignment", True))
+
+
 class Checks:
     def __init__(self):
         self.items: List[Tuple[str, bool, float, bool]] = []

@@ -79,6 +79,7 @@ filters:
 strategies:
   enabled: [trend_pullback, liquidity_sweep, breakout, reversal, vwap, smc_ote_fvg, smc_sweep_mss_fvg, opening_range, round_number]   # 9 استراتيجيات: الخمسة الكلاسيكية + SMC + ORB + الأرقام المستديرة
   min_score: 60
+  require_htf_alignment: true   # نشترط موافقة الفريمات الكبيرة (4H/1H) لكل إعداد؛ وضع السكالب يخفّفها إلى وزن فقط
   round_number:
     step: 10.0            # خطوة الأرقام المستديرة للذهب ($10)؛ للأكبر استخدم 25 أو 50
 
