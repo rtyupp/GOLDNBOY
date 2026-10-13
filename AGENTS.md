@@ -55,6 +55,15 @@
 - Journal persistence: `goldbot/persist.py` syncs `journal.sqlite` to a PRIVATE gist using
   `GITHUB_TOKEN`; restores at startup only when the local journal has zero rows. Config
   `persistence.*`. Fail-open. Verified by `tests/test_addons.py`.
+  - RESTORE MUST NOT OVERWRITE THE DB UNDER A LIVE CONNECTION. The app opens the Journal
+    (WAL mode) before `restore()`. Writing the file in place leaves stale `-wal`/`-shm`
+    sidecars that SQLite replays over the restored data, wiping it (record looks "corrupt"
+    while the source is fine). `restore()` closes the connection (`Journal.close_connection`),
+    removes the sidecars, writes, then `Journal.reopen()`s. Regression:
+    `test_restore_replaces_file_under_a_live_wal_connection`.
+- News calendar URL: ForexFactory publishes only the CURRENT week
+  (`ff_calendar_thisweek.json`). The old `ff_calendar_nextweek.*` endpoint is a permanent 404 —
+  never point config/defaults at it; `NewsCalendar` ignores non-`http(s)` URL values.
 - The repo once forbade ANY news reference (`tests/test_ui_and_removal.py`). That guard now only
   forbids AI/ML decision-making; the news filter is an intentional, user-approved exception.
 
