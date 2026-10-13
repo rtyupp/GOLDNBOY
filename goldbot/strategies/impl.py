@@ -70,11 +70,14 @@ class LiquiditySweep(Strategy):
 
     def check(self, ctx, d):
         ch = Checks()
+        px = ctx.mid
         cands = []
         for tf in ("5m", "15m"):
             for sw in ctx.tf[tf].sweeps:
-                if sw.expected == d and sw.bars_ago <= (10 if tf == "5m" else 6):
+                still_valid = (sw.extreme < px) if d == "bull" else (sw.extreme > px)
+                if sw.expected == d and sw.bars_ago <= (10 if tf == "5m" else 6) and still_valid:
                     cands.append((tf, sw))
+        # Keep the existing confirmed-first / most-recent ordering, but only among valid sweeps.
         cands.sort(key=lambda x: (not x[1].confirmed, x[1].bars_ago))
         tf, sw = cands[0] if cands else (None, None)
         ch.add("liquidity sweep", sw is not None, 25, True)
