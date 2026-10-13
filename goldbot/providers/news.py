@@ -21,7 +21,9 @@ import requests
 log = logging.getLogger("news")
 
 DEFAULT_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
-DEFAULT_URL_NEXT = "https://nfs.faireconomy.media/ff_calendar_nextweek.json"
+# ForexFactory only publishes the current week (thisweek). The former "nextweek" endpoint
+# is a hard 404 now, so the secondary source is empty by default — never point at a dead URL.
+DEFAULT_URL_NEXT = None
 
 
 @dataclass
@@ -59,7 +61,10 @@ class NewsCalendar:
     def __init__(self, cfg, session: Optional[requests.Session] = None):
         n = cfg.section("news")
         self.enabled = bool(n.get("enabled", True))
-        self.urls = [u for u in (n.get("url", DEFAULT_URL), n.get("url_next", DEFAULT_URL_NEXT)) if u]
+        # Only real http(s) URLs are used; empty/"none" values disable a secondary source
+        # instead of firing a request at a dead endpoint every refresh.
+        self.urls = [u for u in (n.get("url", DEFAULT_URL), n.get("url_next", DEFAULT_URL_NEXT))
+                     if u and str(u).strip().lower().startswith(("http://", "https://"))]
         self.currencies = {str(c).upper() for c in n.get("currencies", ["USD", "XAU"])}
         self.impacts = {str(i).strip().title() for i in n.get("impacts", ["High"])}
         self.block_before = float(n.get("block_before_min", 15))

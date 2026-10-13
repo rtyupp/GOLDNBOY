@@ -90,6 +90,18 @@ class TestNewsCalendar(unittest.TestCase):
         self.assertIsNone(nl.block_until(pd.Timestamp.now(tz="UTC")))   # لا حجب بلا بيانات
         self.assertIn("تعذّر", nl.status_text())
 
+    def test_dead_nextweek_endpoint_is_not_requested(self):
+        """Regression: ForexFactory's nextweek endpoint is a permanent 404. It must not be in the
+        default URL list (nor an empty config value), so a refresh only hits real endpoints."""
+        import goldbot.providers.news as N
+        self.assertNotIn("nextweek", (N.DEFAULT_URL_NEXT or ""))
+        c = cfg(news__enabled=True, news__cache=os.path.join(tempfile.mkdtemp(), "n.json"),
+                news__url_next="")
+        nl = NewsCalendar(c, session=mock.Mock())
+        self.assertEqual(nl.urls, ["https://nfs.faireconomy.media/ff_calendar_thisweek.json"])
+        # and the shipped config.yaml must not point at a dead URL either
+        self.assertEqual(len(cfg().section("news").get("url_next") or ""), 0)
+
 
 # ------------------------------------------------------------------ persistence (Gist)
 class _FakeGitHub:

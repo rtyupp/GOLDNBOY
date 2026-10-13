@@ -82,7 +82,7 @@ filters:
 news:                       # فلتر الأخبار الاقتصادية (مصدر مجاني بلا مفاتيح: ForexFactory weekly JSON)
   enabled: true
   url: https://nfs.faireconomy.media/ff_calendar_thisweek.json
-  url_next: https://nfs.faireconomy.media/ff_calendar_nextweek.json
+  url_next: ""              # ForexFactory لم يعد ينشر endpoint للأسبوع القادم (404 دائم) — اتركه فارغًا. الأسابيع تُغطّى عند تجدّد thisweek.
   currencies: [USD, XAU]    # العملات/المعادن المؤثرة على الذهب
   impacts: [High]           # High = الأحداث الحمراء فقط (NFP, CPI, FOMC)
   block_before_min: 15      # لا إشارات قبل الخبر بـ15 دقيقة
