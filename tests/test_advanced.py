@@ -131,6 +131,18 @@ class TestStaleSweepGuard(unittest.TestCase):
         self.assertFalse(ch.required_ok)
         self.assertFalse(ch.as_dict()["price still beyond sweep invalidation"])
 
+    def test_stale_recent_sweep_does_not_hide_fresh_older_sweep(self):
+        closes = [99.0, 99.4, 99.8, 100.0, 99.5]
+        stale = _sweep("swing", "bull", 99.8, 99.7, bars_ago=1)
+        fresh = _sweep("swing", "bull", 99.4, 99.45, bars_ago=3)
+        ctx = _ctx(closes, sweeps5=[stale, fresh], bias="bull")
+
+        ch, inval, tags = self.s.check(ctx, "bull")
+
+        self.assertTrue(ch.as_dict()["price still beyond sweep invalidation"])
+        self.assertEqual(inval, 99.4)
+        self.assertEqual(tags["sweep"], ("swing", 99.45))
+
     def test_fresh_bull_sweep_can_fire(self):
         # نفس السحب لكن السعر ما زال فوق قمة الشمعة ⇒ الإبطال سليم
         closes = [99.0, 99.4, 99.8, 100.0, 99.9]
