@@ -20,4 +20,5 @@ services:
       - {key: TELEGRAM_ADMIN_IDS, sync: false}
       - {key: TELEGRAM_CHANNEL_ID, sync: false}   # اختياري
       - {key: DEEPSEEK_API_KEY, sync: false}       # اختياري: شرح الإشارات والملخصات والأسئلة
+      - {key: GITHUB_TOKEN, sync: false}           # مطلوب لحفظ السجل: توكن بصلاحية gist فقط (لا تُدخل قيمته هنا)
       - {key: BOT_MODE, value: live}               # غيّره إلى paper للتجربة بدون إرسال

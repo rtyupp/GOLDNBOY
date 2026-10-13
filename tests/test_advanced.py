@@ -7,7 +7,7 @@ import pandas as pd
 from goldbot.engine import no_trade
 from goldbot.engine.risk import RiskEngine
 from goldbot.strategies.advanced import LiquidityGrab, SmcSilverBullet
-from goldbot.strategies.impl import ALL
+from goldbot.strategies.impl import ALL, LiquiditySweep
 from tests.helpers import cfg
 
 
@@ -20,7 +20,7 @@ def _df(closes, highs=None, lows=None):
     return pd.DataFrame({"open": opens, "high": highs, "low": lows, "close": closes}, index=idx)
 
 
-def _ctx(closes, *, sweeps5=(), sweeps15=(), bias="bull", session="London", ts=None):
+def _ctx(closes, *, sweeps5=(), sweeps15=(), bias="bull", session="London", ts=None, breaks=None):
     last = {"close": closes[-1], "rsi": 60.0, "macd_hist": 0.5}
 
     def recent_break(direction, bars):
@@ -28,10 +28,12 @@ def _ctx(closes, *, sweeps5=(), sweeps15=(), bias="bull", session="London", ts=N
 
     def state(sweeps):
         return NS(sweeps=list(sweeps), df=_df(closes), last=last, swings=[], zones=[],
-                  recent_break=recent_break, atr=2.0)
+                  recent_break=recent_break, breaks=list(breaks or []), atr=2.0)
 
-    return NS(tf={"5m": state(sweeps5), "15m": state(sweeps15)}, mtf={"bias": bias},
-              session={"label": session}, ts=ts or pd.Timestamp("2026-10-06 10:05", tz="UTC"))
+    st5, st15 = state(sweeps5), state(sweeps15)
+    return NS(tf={"5m": st5, "15m": st15, "1m": st5}, mtf={"bias": bias},
+              session={"label": session}, ts=ts or pd.Timestamp("2026-10-06 10:05", tz="UTC"),
+              mid=closes[-1])
 
 
 def _sweep(pool, expected, extreme, level, bars_ago=1, confirmed=True, stop_hunt=True):
@@ -111,6 +113,30 @@ class TestSilverBullet(unittest.TestCase):
         self.assertEqual(inval, 100.0)
         self.assertEqual(tags["tf"], "5m")
         self.assertGreaterEqual(ch.score, self.c.get("strategies.min_score", 60))
+
+
+class TestStaleSweepGuard(unittest.TestCase):
+    """Regression: a sweep whose invalidation extreme is already violated by price used to score
+    high yet be rejected by risk (SL_ILLOGICAL). LiquiditySweep must not report such stale setups."""
+
+    def setUp(self):
+        self.c = cfg()
+        self.s = LiquiditySweep(self.c, RiskEngine(self.c))
+
+    def test_stale_bull_sweep_does_not_fire(self):
+        # سحب قاع 100.0، ثم هبط السعر تحته (99.5) ⇒ الإبطال (100.0) صار أعلى من السعر ⇒ إعداد بائد
+        closes = [100.6, 100.4, 100.2, 100.0, 99.5]
+        ctx = _ctx(closes, sweeps5=[_sweep("swing", "bull", 100.0, 99.6)], bias="bull")
+        ch, _, _ = self.s.check(ctx, "bull")
+        self.assertFalse(ch.required_ok)
+        self.assertFalse(ch.as_dict()["price still beyond sweep invalidation"])
+
+    def test_fresh_bull_sweep_can_fire(self):
+        # نفس السحب لكن السعر ما زال فوق قمة الشمعة ⇒ الإبطال سليم
+        closes = [99.0, 99.4, 99.8, 100.0, 99.9]
+        ctx = _ctx(closes, sweeps5=[_sweep("swing", "bull", 99.85, 99.5)], bias="bull")
+        ch, _, _ = self.s.check(ctx, "bull")
+        self.assertTrue(ch.as_dict()["price still beyond sweep invalidation"])
 
 
 class TestRegimeGuard(unittest.TestCase):

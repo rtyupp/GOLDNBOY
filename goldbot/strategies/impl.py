@@ -79,6 +79,12 @@ class LiquiditySweep(Strategy):
         tf, sw = cands[0] if cands else (None, None)
         ch.add("liquidity sweep", sw is not None, 25, True)
         ch.add("candle confirmation", bool(sw and sw.confirmed), 20, True)
+        # A sweep whose wick extreme is already violated by price is a STALE setup: its stop would
+        # land on the wrong side of the entry (risk rejects it as SL_ILLOGICAL) yet the checks alone
+        # still score it high. Require price to remain on the correct side of the swept extreme.
+        px = ctx.mid
+        inval_ok = bool(sw) and ((sw.extreme < px) if d == "bull" else (sw.extreme > px))
+        ch.add("price still beyond sweep invalidation", inval_ok, 15, True)
         shift = False
         if sw is not None:
             for t2 in ("5m", "1m"):
