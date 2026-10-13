@@ -21,7 +21,7 @@ def build_handlers(app) -> dict:
     def help_(args):
         return ("استخدم الأزرار بالأسفل، أو الأوامر:\n/start  القائمة والترحيب\n/price  السعر اللحظي\n/analysis  التحليل الحالي\n"
                 "/signal  آخر إعداد تم تقييمه\n/market  نظرة متعددة الفريمات\n/stats  الإحصائيات\n/history  آخر الإشارات\n"
-                "/last  آخر إشارة\n/why  لماذا لا توجد توصية الآن\n/session  الجلسة الحالية\n/status  حالة النظام\n/train  إعادة بناء السجل التاريخي\n/id  رقم حسابك\nأو اكتب أي سؤال عادي عن السوق أو الإشارات")
+                "/last  آخر إشارة\n/why  لماذا لا توجد توصية الآن\n/news  الأخبار الاقتصادية المؤثرة\n/session  الجلسة الحالية\n/status  حالة النظام\n/train  إعادة بناء السجل التاريخي\n/id  رقم حسابك\nأو اكتب أي سؤال عادي عن السوق أو الإشارات")
 
     def status(args):
         t = app.ticks
@@ -49,6 +49,7 @@ def build_handlers(app) -> dict:
             f"الوضع: {'حقيقي' if app.cfg.get('mode') == 'live' else 'تجريبي (بدون إرسال)'}   الاستراتيجيات: {len(app.pipeline.strategies)}",
             f"التهيئة الذاتية: {'قيد التنفيذ ⏳' if app.bootstrap.running else app.bootstrap.last_summary}   سجل الاحتمال: {app.bootstrap.backtest_trades()} صفقة",
             f"وجهة الإشارات: {({'private': 'المحادثة الخاصة', 'channel': 'القناة', 'both': 'الخاص والقناة'}).get(app.tg.target if app.tg else '', 'لا يوجد')}",
+            f"الأخبار: {app.news.status_text() if getattr(app, 'news', None) else 'معطّل'}   حفظ السجل: {app.persist.status_text() if getattr(app, 'persist', None) else 'معطّل'}",
             f"صفقات مفتوحة: {len(op)}   مدة التشغيل: {(time.time() - app.started) / 3600:.1f} ساعة",
             f"آخر دورة تحليل: {lc.ts if lc else '-'} ← {T.final_ar(lc.final) if lc else '-'}" + (f"\nالسبب: {T.reasons_ar(lc.reasons)[:200]}" if lc and lc.reasons else ""),
         ])
@@ -187,5 +188,24 @@ def build_handlers(app) -> dict:
         _a.run_coroutine_threadsafe(app.bootstrap.run(True), app.loop)
         return "🧠 بدأت إعادة بناء السجل التاريخي في الخلفية (5–20 دقيقة)، وسأرسل لك النتيجة."
 
+    def news(args):
+        nl = getattr(app, "news", None)
+        if nl is None or not nl.enabled:
+            return "فلتر الأخبار معطّل."
+        now = pd.Timestamp.now(tz="UTC")
+        blk = nl.block_until(now)
+        lines = ["الأخبار الاقتصادية المؤثرة (UTC):"]
+        up = nl.upcoming(now, 6)
+        if not up:
+            lines.append("لا أحداث مؤثرة قادمة هذا الأسبوع.")
+        for e in up:
+            mark = " ⛔ نوقف الإشارات الآن" if blk is not None and e.ts == blk.ts else ""
+            lines.append(f"• {e.ts.strftime('%a %d %b %H:%M')}  {e.label()}{mark}")
+        if blk is not None:
+            lines.insert(0, f"⛔ داخل نافذة حظر خبر: {blk.label()} — لا إشارات الآن.")
+        lines.append(f"الحالة: {nl.status_text()}")
+        return "\n".join(lines)
+
     return {"/train": train, "/help": help_, "/status": status, "/price": price, "/analysis": analysis, "/signal": signal,
-            "/stats": stats, "/history": history, "/last": last, "/market": market, "/session": session, "/why": why}
+            "/stats": stats, "/history": history, "/last": last, "/market": market, "/session": session, "/why": why,
+            "/news": news}

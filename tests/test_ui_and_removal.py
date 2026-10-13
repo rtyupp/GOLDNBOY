@@ -132,13 +132,13 @@ class TestTelegramPayload(unittest.TestCase):
 
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FORBIDDEN = re.compile(r"gemini|generativelanguage|GEMINI_API_KEY|EVENTS_CSV_URL|forexfactory|faireconomy|fetch_ff|"
-                       r"NewsFilter|NewsStatus|news_cache|goldbot\.ai|goldbot\.ml|lightgbm|xgboost|sklearn|scikit", re.I)
+# لا ذكاء اصطناعي يقرر، ولا نماذج تعلّم آلي في مسار القرار. (فلتر الأخبار صار ميزة مقصودة — انظر TestNewsFilter.)
+FORBIDDEN = re.compile(r"gemini|generativelanguage|GEMINI_API_KEY|goldbot\.ai|goldbot\.ml|lightgbm|xgboost|sklearn|scikit", re.I)
 
 
 class TestAiNewsRemoved(unittest.TestCase):
     def test_modules_deleted(self):
-        for rel in ("goldbot/ai", "goldbot/ml", "goldbot/analysis/news.py", "goldbot/analysis/news_ai.py", "data/events.csv"):
+        for rel in ("goldbot/ai", "goldbot/ml", "goldbot/analysis/news_ai.py", "data/events.csv"):
             self.assertFalse(os.path.exists(os.path.join(ROOT, rel)), rel)
 
     def test_no_references_anywhere(self):
@@ -183,7 +183,7 @@ class TestAiNewsRemoved(unittest.TestCase):
                 os.environ.pop(k)
         c, app = mkapp()
         self.assertTrue(len(app.pipeline.strategies) >= 7)
-        self.assertFalse(hasattr(app, "gemini") or hasattr(app, "news") or hasattr(app, "ml"))
+        self.assertFalse(hasattr(app, "gemini") or hasattr(app, "ml"))
 
 
 if __name__ == "__main__":

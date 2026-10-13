@@ -20,7 +20,9 @@ def build_app(cfg):
         print("تنبيه: متغيرات تيليجرام ناقصة (TELEGRAM_BOT_TOKEN و TELEGRAM_ADMIN_IDS للخاص، أو TELEGRAM_CHANNEL_ID للقناة) "
               "← سيعمل البوت في الوضع التجريبي بدون إرسال", file=sys.stderr)
         cfg.set("mode", "paper")
-    return BotApp(cfg, tg=tg, history_provider=make_history_provider(cfg))
+    from goldbot.providers.news import NewsCalendar
+    news = NewsCalendar(cfg)
+    return BotApp(cfg, tg=tg, history_provider=make_history_provider(cfg), news=news)
 
 
 def apply_env_overrides(cfg):

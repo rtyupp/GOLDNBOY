@@ -76,6 +76,29 @@ filters:
   min_efficiency_ratio: 0.12
   allow_off_hours: false
 
+news:                       # فلتر الأخبار الاقتصادية (مصدر مجاني بلا مفاتيح: ForexFactory weekly JSON)
+  enabled: true
+  url: https://nfs.faireconomy.media/ff_calendar_thisweek.json
+  url_next: https://nfs.faireconomy.media/ff_calendar_nextweek.json
+  currencies: [USD, XAU]    # العملات/المعادن المؤثرة على الذهب
+  impacts: [High]           # High = الأحداث الحمراء فقط (NFP, CPI, FOMC)
+  block_before_min: 15      # لا إشارات قبل الخبر بـ15 دقيقة
+  block_after_min: 15       # ولا بعد الخبر بـ15 دقيقة
+  refresh_hours: 6
+  timeout_sec: 15
+  cache: data/cache/news.json
+
+near_miss:                  # تنبيه «فرصة قاربت»: إعداد قوي مُنع بسبب بوابة (تنبيه فقط، ليس توصية)
+  enabled: true
+  score: 80                 # أبلغ فقط إذا بلغت درجة أفضل إعداد هذه العتبة
+  cooldown_min: 60          # تهدئة لكل إعداد/اتجاه حتى لا يتكرر التنبيه
+
+persistence:                # حفظ السجل (journal.sqlite) عبر Gist خاص ليبقى بعد كل إعادة نشر
+  enabled: true             # يعمل تلقائيًا متى وُجد GITHUB_TOKEN (صلاحية gist)
+  filename: goldbot-journal.sqlite
+  description: GOLDNBOY journal backup (private)
+  interval_min: 30          # رفع دوري كل 30 دقيقة + نسخة عند الإيقاف
+
 strategies:
   enabled: [trend_pullback, liquidity_sweep, breakout, reversal, vwap, smc_ote_fvg, smc_sweep_mss_fvg, opening_range, round_number]   # 9 استراتيجيات: الخمسة الكلاسيكية + SMC + ORB + الأرقام المستديرة
   min_score: 60
