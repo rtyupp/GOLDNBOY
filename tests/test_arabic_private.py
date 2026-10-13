@@ -82,7 +82,8 @@ class TestArabic(unittest.TestCase):
 
     def test_every_strategy_check_has_arabic(self):
         import re
-        src = open("goldbot/strategies/impl.py", encoding="utf-8").read() + open("goldbot/strategies/smc.py", encoding="utf-8").read()
+        src = "".join(open(p, encoding="utf-8").read() for p in
+                      ("goldbot/strategies/impl.py", "goldbot/strategies/smc.py", "goldbot/strategies/advanced.py"))
         names = set(re.findall(r'ch\.add\("([^"]+)"', src))
         missing = [n for n in names if n not in T.CHECKS]
         self.assertEqual(missing, [])

@@ -75,6 +75,9 @@ sessions_or_minutes: 30
 filters:
   min_efficiency_ratio: 0.12
   allow_off_hours: false
+  block_regimes: []          # حالات سوق (اتجاه 1H) تُمنع: مثلاً [TRANSITION, BEARISH]. اتركها فارغة لتعطيلها.
+                             # دليل الاختبار (28 يومًا، بلا بوابة تقاطع): الانتقالي n=40 avgR=-0.34، الهابط n=27 avgR=-0.36
+                             # بينما الصاعد n=11 avgR=+0.30 والعرضي n=7 avgR=+0.34. العينة صغيرة — جرّبها على بيانات أطول قبل الاعتماد.
 
 news:                       # فلتر الأخبار الاقتصادية (مصدر مجاني بلا مفاتيح: ForexFactory weekly JSON)
   enabled: true
@@ -100,11 +103,13 @@ persistence:                # حفظ السجل (journal.sqlite) عبر Gist خ�
   interval_min: 30          # رفع دوري كل 30 دقيقة + نسخة عند الإيقاف
 
 strategies:
-  enabled: [trend_pullback, liquidity_sweep, breakout, reversal, vwap, smc_ote_fvg, smc_sweep_mss_fvg, opening_range, round_number]   # 9 استراتيجيات: الخمسة الكلاسيكية + SMC + ORB + الأرقام المستديرة
+  enabled: [trend_pullback, liquidity_sweep, breakout, reversal, vwap, smc_ote_fvg, smc_sweep_mss_fvg, opening_range, round_number, liquidity_grab, silver_bullet]   # 11 استراتيجية: 5 كلاسيكية + SMC + ORB + أرقام مستديرة + سحب يومي + Silver Bullet
   min_score: 60
   require_htf_alignment: true   # نشترط موافقة الفريمات الكبيرة (4H/1H) لكل إعداد؛ وضع السكالب يخفّفها إلى وزن فقط
   round_number:
     step: 10.0            # خطوة الأرقام المستديرة للذهب ($10)؛ للأكبر استخدم 25 أو 50
+  silver_bullet:
+    windows: [[7, 8], [14, 15], [18, 19]]   # نوافذ ICT (UTC): افتتاح لندن، افتتاح نيويورك، وساعة NY الأخيرة (لا ضبط تلقائي للتوقيت الصيفي)
 
 confluence:
   min_score: 68.4                # = 70 الأصلية بعد حذف بند الأخبار (5 نقاط): الدرجة صارت S×100/95 بدل S+5

@@ -11,7 +11,8 @@ SESSION = {"Asian": "آسيا", "London": "لندن", "New York": "نيويور�
 STRATEGY = {"Trend Pullback": "ارتداد مع الاتجاه", "Liquidity Sweep": "اصطياد السيولة", "Breakout": "الاختراق",
             "Reversal": "الانعكاس", "VWAP": "فواب (VWAP)", "SMC OTE + FVG": "OTE + فجوة FVG (SMC)",
             "SMC Sweep-MSS-FVG": "سحب سيولة ثم MSS ثم FVG (SMC)",
-            "Opening Range": "نطاق الافتتاح (ORB)", "Round Number": "الأرقام المستديرة"}
+            "Opening Range": "نطاق الافتتاح (ORB)", "Round Number": "الأرقام المستديرة",
+            "Liquidity Grab (PDH/PDL)": "سحب سيولة اليوم السابق", "Silver Bullet (Killzone OTE+FVG)": "الرصاصة الفضية (نافذة + OTE + FVG)"}
 BREAK = {"BOS": "كسر هيكل BOS", "CHoCH": "تغيّر طابع CHoCH"}
 RESULT = {"SL": "ضرب وقف الخسارة", "TP2": "حقق الهدف الثاني", "TP1_BE": "هدف أول ثم تعادل", "EXPIRED": "انتهت المدة",
           "OPEN": "مفتوحة", "TP1": "بعد الهدف الأول", "CLOSED": "مغلقة"}
@@ -41,6 +42,9 @@ CHECKS = {
     "liquid session": "جلسة ذات سيولة", "not overextended": "غير ممتد بعيدًا عن المستوى",
     "volume expansion": "توسّع النشاط", "near round level": "قريب من رقم مستدير",
     "touched level": "ملامسة المستوى", "rejection candle": "شمعة رفض", "VWAP side": "جهة VWAP",
+    # ---- Liquidity Grab + Silver Bullet (goldbot/strategies/advanced.py)
+    "daily level sweep (PDH/PDL)": "سحب قمة/قاع اليوم السابق", "level reclaimed": "استرجاع المستوى",
+    "killzone window": "داخل نافذة ICT الزمنية", "displacement (ATR)": "حركة قوية (ATR)",
 }
 DETAIL_REPL = [("wr=", "نسبة الربح "), ("avgR=", "متوسط R "), ("n=", "العينة "), ("ER=", "كفاءة الاتجاه "),
                ("RR2=", "RR2 "), ("min", "د"), ("ATR", "ATR")]
@@ -53,6 +57,7 @@ REASONS = {
     "LOW_CONFLUENCE": "تقاطع الأدلة ضعيف", "WEAK_PROBABILITY": "الاحتمال التاريخي ضعيف",
     "PROBABILITY_UNAVAILABLE": "الاحتمال التاريخي غير متوفر (عينة غير كافية)",
     "CONFLICTING_STRATEGIES": "استراتيجيات متعارضة (شراء مقابل بيع)",
+    "REGIME_BLOCK": "حالة السوق (1H) مستبعدة بحسب الإعداد",
     "OPEN_TRADE_EXISTS": "توجد صفقة مفتوحة", "COOLDOWN": "فترة انتظار بعد آخر إشارة",
     "TELEGRAM_SEND_FAILED": "فشل الإرسال إلى تيليجرام", "SL_ILLOGICAL": "وقف الخسارة غير منطقي",
     "SL_TOO_WIDE": "وقف الخسارة واسع جدًا", "RR_POOR": "نسبة العائد للمخاطرة ضعيفة", "RR_POOR_TARGET": "الهدف قريب من سيولة معاكسة",

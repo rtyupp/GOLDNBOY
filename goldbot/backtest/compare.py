@@ -18,6 +18,7 @@ from goldbot.strategies.impl import ALL
 
 BASELINE_KEYS = ["trend_pullback", "liquidity_sweep", "breakout", "reversal", "vwap"]
 NEW_KEYS = ["smc_ote_fvg", "smc_sweep_mss_fvg"]
+ADVANCED_KEYS = ["liquidity_grab", "silver_bullet"]
 MIN_TRADES = 30
 
 
@@ -48,15 +49,16 @@ def compare(base: pd.DataFrame, cfg: Cfg, tf: str = "5m", step: int = 1, max_eva
     runs = {
         "baseline_real": run_backtest(base, real, tf, step, max_evals, warmup_days, only=BASELINE_KEYS, progress=progress),
         "extended_real": run_backtest(base, real, tf, step, max_evals, warmup_days, only=BASELINE_KEYS + NEW_KEYS, progress=progress),
-        "extended_ideal": run_backtest(base, ideal, tf, step, max_evals, warmup_days, only=BASELINE_KEYS + NEW_KEYS, progress=progress),
+        "advanced_real": run_backtest(base, real, tf, step, max_evals, warmup_days, only=BASELINE_KEYS + NEW_KEYS + ADVANCED_KEYS, progress=progress),
+        "extended_ideal": run_backtest(base, ideal, tf, step, max_evals, warmup_days, only=BASELINE_KEYS + NEW_KEYS + ADVANCED_KEYS, progress=progress),
     }
     labels = {c.key: c.label for c in ALL}
     out = {"tf": tf, "costs": {"spread": sp, "slippage_entry": se, "slippage_stop": ss}, "runs": {}, "verdicts": {}}
     for k, r in runs.items():
         out["runs"][k] = {"combined": r.get("combined"), "strategies": dict(r["strategies"])}
-    ext = runs["extended_real"]["strategies"]
-    for key in NEW_KEYS:
-        out["verdicts"][labels[key]] = verdict(ext.get(labels[key], {}))
+    adv = runs["advanced_real"]["strategies"]
+    for key in NEW_KEYS + ADVANCED_KEYS:
+        out["verdicts"][labels[key]] = verdict(adv.get(labels[key], {}))
     return out
 
 
@@ -70,13 +72,14 @@ def fmt(res: dict) -> str:
     c = res["costs"]
     lines = [f"المقارنة على فريم {res['tf']} — التكاليف الواقعية: سبريد {c['spread']} + انزلاق دخول {c['slippage_entry']} + انزلاق وقف {c['slippage_stop']}"]
     for k, title in (("baseline_real", "الاستراتيجيات الحالية فقط (مع تكاليف)"), ("extended_real", "الحالية + SMC (مع تكاليف)"),
-                     ("extended_ideal", "الحالية + SMC (بدون أي تكاليف — للمقارنة فقط)")):
+                     ("advanced_real", "الحالية + SMC + المتقدمة (مع تكاليف)"),
+                     ("extended_ideal", "الكل (بدون أي تكاليف — للمقارنة فقط)")):
         lines.append(f"\n{title}")
         r = res["runs"][k]
         lines.append(row("المجمّع (الإشارة المرسلة)", r["combined"]))
         for n, v in r["strategies"].items():
             lines.append(row(n, v))
-    lines.append("\nحكم استراتيجيات SMC (مع التكاليف):")
+    lines.append("\nحكم الاستراتيجيات الجديدة والمتقدمة (مع التكاليف):")
     for n, v in res["verdicts"].items():
         lines.append(f"  {n}: {v}")
     return "\n".join(lines)
