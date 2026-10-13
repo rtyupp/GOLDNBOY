@@ -60,6 +60,7 @@ class BotApp:
         self.live = None
         self._tasks: list = []
         self._stop = False
+        self._health_srv = None
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self.bootstrap = Bootstrapper(self)
         self._bg: set = set()
@@ -353,9 +354,11 @@ class BotApp:
             finally:
                 writer.close()
         srv = await asyncio.start_server(handle, "0.0.0.0", port)
+        self._health_srv = srv
         log.info("نقطة الفحص /health تعمل على المنفذ %d", port)
         async with srv:
             await srv.serve_forever()
+        self._health_srv = None
 
     # ------------------------------------------------------------------ keep-alive (Render free web service)
     async def keepalive(self):
@@ -419,6 +422,10 @@ class BotApp:
         finally:
             for t in self._tasks:
                 t.cancel()
+            # stop() may have been called from a signal handler or from a coroutine; wait for the
+            # tasks to finish unwinding so the process can actually exit (a server left awaiting
+            # serve_forever would otherwise keep the interpreter alive forever).
+            await asyncio.gather(*self._tasks, return_exceptions=True)
 
     def stop(self):
         self._stop = True
@@ -426,6 +433,10 @@ class BotApp:
             self.live.stop()
         if self.cmd:
             self.cmd.stop()
+        if self._health_srv is not None:        # close the listening socket: serve_forever must end
+            self._health_srv.close()
+        for t in self._tasks:                   # unblock loops sitting in a long sleep / queue.get
+            t.cancel()
         try:                                    # آخر نسخة من السجل قبل الإيقاف (نشر/إعادة تشغيل)
             self.persist.push(force=True)
         except Exception:

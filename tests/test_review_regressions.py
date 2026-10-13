@@ -13,6 +13,7 @@ from unittest import mock
 import pandas as pd
 
 from tests.helpers import cfg, mkapp
+from goldbot.providers.synthetic import make_synthetic_1m
 from goldbot.tracking.journal import Journal
 from goldbot.tracking.tracker import TradeTracker
 from goldbot.commands import build_handlers
@@ -333,6 +334,74 @@ class TestWhyCommand(unittest.TestCase):
         app.last_cand = cand
         out = build_handlers(app)["/why"]([])
         self.assertIn("أُرسلت", out)
+
+
+class TestStrategyIsolation(unittest.TestCase):
+    """A single crashing strategy must not abort the whole cycle (previously it propagated out
+    of prepare() and killed the signal path for that minute)."""
+
+    def test_crashing_strategy_becomes_none_and_others_run(self):
+        from goldbot.strategies.base import Strategy
+        from goldbot.engine.pipeline import Pipeline
+        from goldbot.analysis.indicators import add_indicators
+        from goldbot.core.timeframes import resample_ohlcv, closed_only, ALL_TFS
+
+        class Boom(Strategy):
+            key, label = "boom", "Boom"
+
+            def check(self, ctx, d):
+                raise ZeroDivisionError("boom")
+
+        base = make_synthetic_1m(days=25, seed=3)
+        full = {tf: resample_ohlcv(base, tf) for tf in ALL_TFS}
+        ind = {tf: add_indicators(full[tf].drop(columns="close_time")).join(full[tf][["close_time"]]) for tf in full}
+        as_of = ind["5m"].index[-5]
+        frames = {tf: closed_only(ind[tf], as_of) for tf in ind}
+        pipe = Pipeline(cfg(), journal=None)
+        pipe.strategies = [Boom(pipe.cfg, pipe.risk)] + pipe.strategies
+        last = float(frames["1m"]["close"].iloc[-1])
+        with mock.patch("goldbot.engine.pipeline.log.exception"):     # اكتم الاختبار بدون ضجيج
+            cand = pipe.prepare(frames, last - .15, last + .15, as_of, use_probability=False)
+        self.assertIsNotNone(cand.ctx)
+        self.assertEqual(cand.results[0].signal, "NONE")
+        self.assertEqual(cand.results[0].reason, "strategy error")
+        self.assertGreater(sum(1 for r in cand.results[1:] if r.reason != "strategy error"), 0)
+
+    def test_nonpositive_atr_is_rejected_not_divided_by(self):
+        from goldbot.analysis.analyzer import Analyzer
+        df = pd.DataFrame({"high": [2000.0] * 400, "low": [2000.0] * 400, "close": [2000.0] * 400},
+                          index=pd.date_range("2026-10-01", periods=400, freq="1min", tz="UTC"))
+        df["atr"] = 0.0
+        self.assertIsNone(Analyzer(cfg()).tf_state("1m", df, {}, "range"))
+
+
+class TestGracefulShutdown(unittest.TestCase):
+    """SIGTERM must actually terminate the process. The /health server used to await
+    serve_forever() with no stop check, so gather() never returned and Render had to SIGKILL
+    the container after every deploy (abrupt stop, no final journal push)."""
+
+    def test_stop_closes_health_server_and_cancels_tasks(self):
+        import asyncio, socket
+
+        async def go():
+            c, app = mkapp(mode="paper")
+            with socket.socket() as s:            # اختر منفذًا حرًا للاختبار
+                s.bind(("127.0.0.1", 0))
+                port = s.getsockname()[1]
+            os.environ["PORT"] = str(port)
+            app._tasks = [asyncio.create_task(app._supervise("فحص الصحة", app.health_server))]
+            for _ in range(100):                  # انتظر حتى يُفتح المنفذ فعلاً
+                await asyncio.sleep(0.05)
+                if app._health_srv is not None:
+                    break
+            self.assertIsNotNone(app._health_srv, "health server did not start")
+            app.stop()                            # يجب أن يُغلق المخدم ويُلغي المهام
+            await asyncio.wait_for(asyncio.gather(*app._tasks, return_exceptions=True), timeout=5)
+
+        try:
+            asyncio.run(go())
+        finally:
+            os.environ.pop("PORT", None)
 
 
 if __name__ == "__main__":

@@ -85,7 +85,7 @@ class Analyzer:
         return out
 
     def tf_state(self, tf: str, df: pd.DataFrame, extra: Dict[str, float], htf_trend: str) -> Optional[TFState]:
-        if len(df) < 60 or df["atr"].iloc[-1] != df["atr"].iloc[-1]:
+        if len(df) < 60 or not (df["atr"].iloc[-1] > 0):   # NaN or <=0 ATR would make risk math divide by zero
             return None
         key = (tf, df.index[-1], round(sum(extra.values()), 2) if extra else 0, htf_trend)
         hit = self._state_cache.get(key)

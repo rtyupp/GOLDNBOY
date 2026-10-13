@@ -43,6 +43,8 @@ def _parse_events(raw, currencies, impacts) -> List[NewsEvent]:
     if not isinstance(raw, list):
         return out
     for item in raw:
+        if not isinstance(item, dict):          # upstream/CDN quirks can put nulls or nested lists in the array
+            continue
         try:
             cur = str(item.get("country") or item.get("currency") or "").upper()
             imp = str(item.get("impact") or "").strip().title()
@@ -52,7 +54,7 @@ def _parse_events(raw, currencies, impacts) -> List[NewsEvent]:
             if ts.tzinfo is None:
                 ts = ts.tz_localize("UTC")
             out.append(NewsEvent(ts.tz_convert("UTC"), cur, imp, str(item.get("title") or "").strip()))
-        except (KeyError, TypeError, ValueError):
+        except (KeyError, TypeError, ValueError, AttributeError):
             continue
     out.sort(key=lambda e: e.ts)
     return out
