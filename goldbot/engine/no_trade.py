@@ -24,6 +24,11 @@ def global_gates(cfg, ctx, data_ok: bool, data_reason: str) -> List[str]:
     er = float(s15.last["er"])
     if er < cfg.get("filters.min_efficiency_ratio", 0.12) and s15.trend in ("RANGE", "TRANSITION") and ctx.tf["1H"].trend == "RANGE":
         r.append(f"CHOPPY_MARKET(ER={er:.2f})")
+    # حالة السوق (اتجاه 1H): أظهرت الاختبارات أن أنظمة «الانتقالي» أسوأ حالًا بفارق واضح.
+    # قابلة للتعطيل من الإعداد، ولا تُحجب إلا ما يحدده المستخدم صراحة.
+    for bad in (cfg.get("filters.block_regimes", []) or []):
+        if ctx.regime == bad:
+            r.append(f"REGIME_BLOCK({bad})")
     if ctx.session["label"] == "Off-hours" and not cfg.get("filters.allow_off_hours", False):
         r.append("OFF_HOURS")
     return r

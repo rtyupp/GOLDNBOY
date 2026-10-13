@@ -258,6 +258,7 @@ class RoundNumber(Strategy):
 
 
 from goldbot.strategies.smc import SmcOteFvg, SmcSweepMssFvg   # noqa: E402  (استراتيجيتا SMC)
+from goldbot.strategies.advanced import LiquidityGrab, SmcSilverBullet   # noqa: E402  (استراتيجيتان متقدمتان)
 
 ALL = [TrendPullback, LiquiditySweep, Breakout, Reversal, VwapStrategy, SmcOteFvg, SmcSweepMssFvg,
-       OpeningRange, RoundNumber]
+       OpeningRange, RoundNumber, LiquidityGrab, SmcSilverBullet]

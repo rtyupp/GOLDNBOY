@@ -4,7 +4,7 @@
 - Python deps are NOT preinstalled in a fresh session: run `pip install -r requirements.txt`
   (pandas, numpy, requests, PyYAML, matplotlib, ta). `ruff` also needs `pip install ruff`.
 - Run a quick live sanity check with `python -m goldbot check` (tests providers + prints mode).
-- Full suite: `python -m unittest discover -s tests` (~2 min, 182 tests, 1 skipped).
+- Full suite: `python -m unittest discover -s tests` (~2 min, 203 tests, 1 skipped).
 - Lint gate used by this repo: `python -m ruff check goldbot/ tests/ --select F,E9`.
 - Scripts that import `goldbot` need `PYTHONPATH=/workspace/GOLDNBOY` when run from `/tmp`.
 
@@ -24,6 +24,27 @@
 - `strategies.require_htf_alignment` (default `true`): when `false`, the HTF checks become weighted
   (not required). `confluence.ignore_htf_conflict` (default `false`): when `true`, drop the
   `HTF_CONFLICT` global gate. The scalp profile sets both to relax, because 15m scalps are short.
+
+## Strategies (11) — `goldbot/strategies/`
+- Classic 5 in `impl.py`; SMC 2 in `smc.py`; ORB + Round Number in `impl.py`; advanced 2 in `advanced.py`.
+- `advanced.py` adds `LiquidityGrab` (PDH/PDL sweep + reclaim) and `SmcSilverBullet` (ICT killzone
+  window + OTE + FVG + MSS). Both reuse existing helpers (`impulse_leg`, `ote_band`, `in_ote`,
+  `_confirm_candle`, `_overlap` from `smc.py`) — do NOT duplicate that logic.
+- Register a strategy in `impl.py::ALL` (append) AND in `config/config.yaml` `strategies.enabled`,
+  or it never runs. Keep i18n `T.STRATEGY` + `T.CHECKS` in sync.
+- Silver Bullet windows: `strategies.silver_bullet.windows` (UTC, no DST auto-adjust).
+
+## Filters / gates
+- `filters.block_regimes` (default `[]`): global gate `REGIME_BLOCK(<1H trend>)` in
+  `engine/no_trade.py::global_gates`. Evidence (28d, no confluence gate): TRANSITION avgR -0.34,
+  BEARISH -0.36 vs BULLISH +0.30, RANGE +0.34. Strongest lever found, but small sample → off by default.
+
+## Backtesting / comparing (no fabricated edge)
+- `python -m goldbot compare` now runs baseline / +SMC / +advanced (with costs) / all (no costs),
+  and scores EVERY new strategy (`BASELINE_KEYS`, `NEW_KEYS`, `ADVANCED_KEYS` in `backtest/compare.py`).
+- Honest result on 28d: the whole ensemble is negative IS+OOS; loosening gates only adds losers.
+  Only Round Number had a clear positive stat (n=15, avgR +0.40). Never present a small-sample
+  improvement as proven — check the walk-forward out-of-sample slice and report trade counts.
 
 ## Add-ons (guardrails & persistence)
 - News filter: `goldbot/providers/news.py` (free ForexFactory weekly JSON, no key). Wired into
