@@ -283,6 +283,34 @@ class TestNewStrategiesLoaded(unittest.TestCase):
         self.assertIn("opening_range", c.get("strategies.enabled"))
 
 
+class TestScalpHtfRelaxation(unittest.TestCase):
+    """السكالب يخفّف بوابة تعارض الفريمات: الوزن يبقى لكن لا يمنع الإعداد."""
+
+    def _ctx(self):
+        return SimpleNamespace(mtf={"bias": "conflict", "strength": "WEAK"}, spread=0.3,
+                               tf={"15m": SimpleNamespace(last={"er": 0.5}, trend="RANGE"),
+                                   "1H": SimpleNamespace(trend="RANGE")},
+                               session={"label": "Asia"})
+
+    def test_default_blocks_htf_conflict(self):
+        from goldbot.engine.no_trade import global_gates
+        from goldbot.config import load_config
+        c = load_config("config/config.yaml")
+        self.assertIn("HTF_CONFLICT(4H vs 1H)", global_gates(c, self._ctx(), True, "OK"))
+
+    def test_scalp_ignores_htf_conflict(self):
+        from goldbot.engine.no_trade import global_gates
+        from goldbot.config import load_config
+        c = load_config("config/config.yaml", profile="scalp")
+        self.assertNotIn("HTF_CONFLICT(4H vs 1H)", global_gates(c, self._ctx(), True, "OK"))
+
+    def test_scalp_drops_htf_requirement(self):
+        from goldbot.strategies.base import htf_required
+        from goldbot.config import load_config
+        self.assertTrue(htf_required(load_config("config/config.yaml")))
+        self.assertFalse(htf_required(load_config("config/config.yaml", profile="scalp")))
+
+
 class TestWhyCommand(unittest.TestCase):
     """لوحة التشخيص: تشرح لماذا لا توجد توصية (البوابة التي أوقفتها)."""
 

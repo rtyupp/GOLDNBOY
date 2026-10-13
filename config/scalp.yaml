@@ -12,9 +12,11 @@ backtest:
 # فريم السكالب الأساسي 15m: نبقي 5m للارتكاز والهيكل، ونمنع ضجيج 1m
 strategies:
   min_score: 55     # أسهل قليلًا لالتقاط فرص أكثر على 15m
+  require_htf_alignment: false   # السكالب لا يشترط موافقة 4H/1H: تخفّ إلى وزن فقط (صفقات قصيرة)
 
 confluence:
   min_score: 60.0   # أقل من الافتراضي (68.4): سكالب على 15m يحتاج حساسية أعلى
+  ignore_htf_conflict: true   # لا نمنع الإشارة لمجرد تعارض 4H/1H
 
 filters:
   min_efficiency_ratio: 0.10   # نتقبّل تداولًا أكثر في اتجاهات 15m

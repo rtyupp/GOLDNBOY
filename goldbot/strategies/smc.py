@@ -12,7 +12,7 @@
 from __future__ import annotations
 from typing import Optional
 
-from goldbot.strategies.base import Strategy, Checks
+from goldbot.strategies.base import Strategy, Checks, htf_required
 
 OTE_LO, OTE_HI = 0.62, 0.79
 MIN_LEG_ATR, MAX_LEG_ATR = 1.5, 8.0
@@ -119,7 +119,7 @@ class SmcOteFvg(Strategy):
         ch.add("impulse leg", setup is not None, 10, True)
         ch.add("price in OTE 62-79%", bool(setup and setup["in_ote"]), 20, True)
         ch.add("confirmation candle", _confirm_candle(s5.df, d), 15, True)
-        ch.add("HTF not opposing", _htf_ok(ctx, d), 10, True)
+        ch.add("HTF not opposing", _htf_ok(ctx, d), 10, htf_required(self.cfg))
         ch.add("FVG overlaps OTE", bool(setup and setup["fvg"]), 20, True)
         ch.add("strict order block at OTE", bool(setup and setup["ob"]), 10)
         ch.add("liquidity sweep (SMC)", any(s.expected == d for s in s5.sweeps + s15.sweeps), 10)
@@ -164,7 +164,7 @@ class SmcSweepMssFvg(Strategy):
             else:
                 inside = float(df["high"].iloc[-3:].max()) >= zone.bottom and close < zone.top
         ch.add("price inside FVG", inside, 20, True)
-        ch.add("HTF not opposing", _htf_ok(ctx, d), 10, True)
+        ch.add("HTF not opposing", _htf_ok(ctx, d), 10, htf_required(self.cfg))
         ch.add("sweep confirmed", bool(sw and sw.confirmed), 10)
         ch.add("pool quality", bool(sw and sw.pool_kind != "swing"), 10)
         ch.add("session active", ctx.session["label"] != "Off-hours", 10)

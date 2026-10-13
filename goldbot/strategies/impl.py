@@ -1,7 +1,7 @@
 """Seven independent strategies (5 classic + 2 SMC in smc.py). Each returns Signal/Score/Entry/SL/TP1/TP2/Reason via Strategy.evaluate()."""
 from __future__ import annotations
 from typing import Optional
-from goldbot.strategies.base import Strategy, Checks, opp
+from goldbot.strategies.base import Strategy, Checks, opp, htf_required
 
 
 def _bias_ok(ctx, d: str) -> bool:
@@ -38,7 +38,7 @@ class TrendPullback(Strategy):
         l5 = s5.last
         ch = Checks()
         mtf = ctx.mtf
-        ch.add("HTF trend", mtf["bias"] == d and mtf["strength"] in ("STRONG", "WEAK"), 20, True)
+        ch.add("HTF trend", mtf["bias"] == d and mtf["strength"] in ("STRONG", "WEAK"), 20, htf_required(self.cfg))
         win = df5.iloc[-6:]
         a5 = s5.atr
         if d == "bull":
@@ -88,7 +88,7 @@ class LiquiditySweep(Strategy):
                         shift = True if (t2 == "1m" or b.idx >= (sw.idx if tf == "5m" else len(st2.df) - 12)) else shift
                         break
         ch.add("CHoCH/BOS after sweep", shift, 20, True)
-        ch.add("HTF not opposing", ctx.mtf["bias"] in (d, "neutral") or (ctx.mtf["bias"] != "conflict" and ctx.mtf["strength"] == "WEAK"), 15, True)
+        ch.add("HTF not opposing", ctx.mtf["bias"] in (d, "neutral") or (ctx.mtf["bias"] != "conflict" and ctx.mtf["strength"] == "WEAK"), 15, htf_required(self.cfg))
         ch.add("rejection / stop-hunt", bool(sw and sw.stop_hunt), 10)
         ch.add("quality pool", bool(sw and sw.pool_kind != "swing"), 10)
         inval = sw.extreme if sw else None
@@ -159,7 +159,7 @@ class Reversal(Strategy):
         shift = s5.recent_break(d, 12) is not None
         ch.add("structure shift (CHoCH/BOS)", shift, 25, True)
         strong_against = ctx.mtf["bias"] == opp(d) and ctx.mtf["strength"] == "STRONG"
-        ch.add("not against strong HTF", not strong_against, 15, True)
+        ch.add("not against strong HTF", not strong_against, 15, htf_required(self.cfg))
         inval = (sw[0].extreme if sw else None)
         return ch, inval, {"setup": "Reversal"}
 
@@ -175,7 +175,7 @@ class VwapStrategy(Strategy):
         ch = Checks()
         slope_up = float(df["ema_50"].iloc[-1]) > float(df["ema_50"].iloc[-6])
         side_ok = (float(l["close"]) > float(l["vwap"]) and slope_up) if d == "bull" else (float(l["close"]) < float(l["vwap"]) and not slope_up)
-        ch.add("trend", side_ok and _bias_ok(ctx, d), 20, True)
+        ch.add("trend", side_ok and _bias_ok(ctx, d), 20, htf_required(self.cfg))
         win = df.iloc[-8:]
         if d == "bull":
             retest = float(win["low"].min()) <= float(l["vwap"]) + 0.25 * a and float(l["close"]) > float(l["vwap"])
@@ -221,7 +221,7 @@ class OpeningRange(Strategy):
         ch.add("liquid session", sess.get("label") in ("London", "New York", "London/New York"), 15, True)
         ch.add("not overextended", abs(px - lvl) <= 1.8 * a, 10)
         ch.add("volume expansion", float(l["rel_vol"]) >= 1.2, 10)
-        ch.add("HTF not opposing", ctx.mtf["bias"] in (d, "neutral"), 10)
+        ch.add("HTF not opposing", ctx.mtf["bias"] in (d, "neutral"), 10, htf_required(self.cfg))
         mom = (float(l["rsi"]) > 52 and float(l["macd_hist"]) > 0) if d == "bull" else (float(l["rsi"]) < 48 and float(l["macd_hist"]) < 0)
         ch.add("momentum", mom, 10)
         return ch, inval, {"setup": "Opening Range", "level": round(lvl, 2)}
@@ -251,7 +251,7 @@ class RoundNumber(Strategy):
             inval = lvl + 0.5 * a
         ch.add("touched level", touched, 20, True)
         ch.add("rejection candle", rej, 25, True)
-        ch.add("HTF not opposing", ctx.mtf["bias"] in (d, "neutral"), 15)
+        ch.add("HTF not opposing", ctx.mtf["bias"] in (d, "neutral"), 15, htf_required(self.cfg))
         ch.add("momentum", (float(l["rsi"]) > 50) == (d == "bull"), 10)
         ch.add("VWAP side", (float(l["close"]) > float(l["vwap"])) == (d == "bull"), 10)
         return ch, inval, {"setup": "Round Number", "level": round(lvl, 2)}
