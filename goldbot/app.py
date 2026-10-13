@@ -41,7 +41,7 @@ class BotApp:
         self.recorder = CycleRecorder(cfg.get("paths.log_dir", "logs"))
         self.tg = tg
         self.news = news
-        self.persist = persist or JournalSync(cfg)
+        self.persist = persist or JournalSync(cfg, journal=self.journal)
         self._near_miss_last: dict = {}
         self.history_provider = history_provider
         self.live_factory = live_factory

@@ -8,7 +8,7 @@ from unittest import mock
 import pandas as pd
 
 from goldbot.providers.news import NewsCalendar, NewsEvent, _parse_events
-from goldbot.persist import JournalSync
+from goldbot.persist import JournalSync, _safe_copy
 from goldbot.tracking.journal import Journal
 from tests.helpers import cfg, mkapp, series_from_closes
 
@@ -164,6 +164,37 @@ class TestPersist(unittest.TestCase):
             # محلي ممتلئ ⇒ لا استعادة (نحمي بيانات أحدث) — حتى لو مر وقت طويل
             with mock.patch("goldbot.persist.time.time", return_value=99999.0):
                 self.assertFalse(ps.restore())
+
+    def test_restore_replaces_file_under_a_live_wal_connection(self):
+        """Regression: the app opens the Journal BEFORE restore(). Overwriting journal.sqlite in
+        place while that WAL connection is open leaves stale -wal/-shm sidecars that SQLite replays
+        over the restored file, wiping the restored rows. restore() must swap the file safely and
+        the SAME live handle must then see the restored data."""
+        tmp = tempfile.mkdtemp()
+        jp = os.path.join(tmp, "j.sqlite")
+        # A backup with real rows, copied exactly like push() does (checkpoint + backup)
+        src = os.path.join(tmp, "src.sqlite")
+        sj = Journal(src)
+        sj.add_signal(timestamp="2026-10-13T00:00:00+00:00", symbol="XAUUSD", direction="BUY", entry=1.0, sl=0.9,
+                      tp1=1.1, tp2=1.2, strategy="x", session="Asian", score=90, rr1=1.2, rr2=2.4)
+        tmpcopy = os.path.join(tempfile.mkdtemp(), "goldbot-journal.sqlite")
+        self.assertTrue(_safe_copy(src, tmpcopy))
+        with open(tmpcopy, "rb") as fh:
+            data = fh.read()
+
+        # Production ordering: live Journal on the target first (opens the empty file), then restore
+        live = Journal(jp)
+        self.assertEqual(len(live.last_signals(10)), 0)
+        c = cfg(paths__journal=jp, persistence__enabled=True)
+        gh = _FakeGitHub()
+        gh.gists["g1"] = {"name": c.get("persistence.filename"), "content": base64.b64encode(data).decode()}
+        ps = JournalSync(c, token="tok", session=gh, journal=live)
+        self.assertTrue(ps.restore())
+        # Same handle must now expose the restored row (and remain usable)
+        self.assertEqual(len(live.last_signals(10)), 1)
+        live.add_signal(timestamp="2026-10-14T00:00:00+00:00", symbol="XAUUSD", direction="SELL", entry=1.0, sl=1.1,
+                        tp1=0.9, tp2=0.8, strategy="y", session="Asian", score=90, rr1=1.2, rr2=2.4)
+        self.assertEqual(len(live.last_signals(10)), 2)
 
     def test_disabled_without_token(self):
         c = cfg(persistence__enabled=True)

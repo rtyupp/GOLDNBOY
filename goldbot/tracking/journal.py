@@ -31,14 +31,37 @@ class Journal:
         if d:
             os.makedirs(d, exist_ok=True)
         self.path = path
-        self.db = sqlite3.connect(path, check_same_thread=False)
-        self.db.row_factory = sqlite3.Row
-        self.db.execute("PRAGMA journal_mode=WAL")
-        self.db.execute("PRAGMA busy_timeout=20000")
         self.lock = threading.RLock()
+        self.db = None
+        self.reopen()
+
+    def reopen(self):
+        """(Re)connect to the file on disk. Required after the journal file is replaced by a
+        restore: the old connection pins stale WAL/SHM pages that would otherwise be replayed
+        over the restored file and wipe it."""
         with self.lock:
+            try:
+                if self.db is not None:
+                    self.db.close()
+            except sqlite3.Error:
+                pass
+            self.db = sqlite3.connect(self.path, check_same_thread=False)
+            self.db.row_factory = sqlite3.Row
+            self.db.execute("PRAGMA journal_mode=WAL")
+            self.db.execute("PRAGMA busy_timeout=20000")
             self.db.executescript(SCHEMA)
             self.db.commit()
+
+    def close_connection(self):
+        """Release the file handle so the DB file can be replaced on disk (restore). Safe to call
+        when no connection is open; callers must call reopen() afterwards to keep using the journal."""
+        with self.lock:
+            try:
+                if self.db is not None:
+                    self.db.close()
+            except sqlite3.Error:
+                pass
+            self.db = None
 
     # ---------------- signals ----------------
     def add_signal(self, **k) -> int:
