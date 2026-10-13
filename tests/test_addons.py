@@ -102,6 +102,24 @@ class TestNewsCalendar(unittest.TestCase):
         # and the shipped config.yaml must not point at a dead URL either
         self.assertEqual(len(cfg().section("news").get("url_next") or ""), 0)
 
+    def test_throttled_refresh_keeps_previous_calendar(self):
+        """Regression: a 429 must not erase a good calendar nor re-log a hard failure on every
+        refresh; it backs off and keeps serving the previous events."""
+        c = cfg(news__enabled=True, news__cache=os.path.join(tempfile.mkdtemp(), "n.json"))
+        nl = NewsCalendar(c, session=mock.Mock())
+        nl.events = [NewsEvent(pd.Timestamp("2026-10-13 16:30", tz="UTC"), "USD", "High", "CPI")]
+        r429 = mock.Mock(status_code=429, headers={"Retry-After": "120"})
+        s = mock.Mock(); s.get.return_value = r429
+        nl.s = s
+        self.assertFalse(nl.refresh(force=True))              # لم يُحدَّث
+        self.assertIsNone(nl.last_error)                       # لكنه ليس خطأً صريحًا
+        self.assertEqual(len(nl.events), 1)                    # التقويم السابق محفوظ
+        self.assertGreater(nl._next_try, 0)                    # مع تأجيل إعادة المحاولة
+        # within the backoff window a forced refresh is skipped (no request fired)
+        s.get.reset_mock()
+        self.assertFalse(nl.refresh(force=True))
+        self.assertEqual(s.get.call_count, 0)
+
 
 # ------------------------------------------------------------------ persistence (Gist)
 class _FakeGitHub:

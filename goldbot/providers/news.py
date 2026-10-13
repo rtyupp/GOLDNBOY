@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -83,6 +84,7 @@ class NewsCalendar:
         self.events: List[NewsEvent] = []
         self.fetched_at = 0.0
         self.last_error: Optional[str] = None
+        self._next_try = 0.0            # backoff: don't hammer a 429ing host every refresh
         self._load_cache()
 
     # ------------------------------------------------------------------ cache
@@ -114,12 +116,23 @@ class NewsCalendar:
         if not self.enabled:
             return False
         now = now or pd.Timestamp.now(tz="UTC")
-        if not force and not self.due(now):
+        if time.time() < self._next_try or (not force and not self.due(now)):
             return False
-        raw_all, errors = [], []
+        raw_all, errors, throttled = [], [], False
         for url in self.urls:
             try:
                 r = self.s.get(url, timeout=self.timeout)
+                if r.status_code == 429:
+                    # Rate limited (ForexFactory does this aggressively). Honour Retry-After and back off
+                    # instead of logging a fresh error on every refresh.
+                    try:
+                        wait = float(r.headers.get("Retry-After", "60"))
+                    except (TypeError, ValueError):
+                        wait = 60.0
+                    self._next_try = time.time() + max(60.0, min(wait, 1800.0))
+                    throttled = True
+                    errors.append("HTTP 429 (rate limited)")
+                    continue
                 r.raise_for_status()
                 data = r.json()
                 if isinstance(data, list):
@@ -130,10 +143,15 @@ class NewsCalendar:
             self.events = _parse_events(raw_all, self.currencies, self.impacts)
             self.fetched_at = now.timestamp()
             self.last_error = None
+            self._next_try = 0.0
             self._save_cache(raw_all)
             log.info("تقويم الأخبار: %d حدث مؤثر (حتى %s)", len(self.events),
                      self.events[-1].ts.strftime("%Y-%m-%d") if self.events else "-")
             return True
+        # A transient throttle is not a hard failure: keep the last good calendar and stay quiet.
+        if throttled and self.events:
+            log.info("تقويم الأخبار: المصدر يحجب الطلبات مؤقتًا (429) — نُبقي التقويم السابق ونعيد المحاولة لاحقًا")
+            return False
         self.last_error = "؛ ".join(errors) or "لا بيانات"
         log.warning("تعذّر تحديث تقويم الأخبار (%s) — لن يُحجب أي شيء", self.last_error)
         return False

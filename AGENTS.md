@@ -64,8 +64,24 @@
 - News calendar URL: ForexFactory publishes only the CURRENT week
   (`ff_calendar_thisweek.json`). The old `ff_calendar_nextweek.*` endpoint is a permanent 404 —
   never point config/defaults at it; `NewsCalendar` ignores non-`http(s)` URL values.
+- ForexFactory also answers `429 Too Many Requests` transiently (Cloudflare). A 429 is NOT a hard
+  failure: `refresh()` backs off (`_next_try`, honouring `Retry-After`, 60–1800s), keeps the last
+  good calendar, and does not log a scary error on every refresh. The backoff applies even to
+  `force=True` (so the `/news` command cannot hammer the host). Regression:
+  `test_throttled_refresh_keeps_previous_calendar`.
 - The repo once forbade ANY news reference (`tests/test_ui_and_removal.py`). That guard now only
   forbids AI/ML decision-making; the news filter is an intentional, user-approved exception.
+
+## Strategies / risk
+- `LiquiditySweep` invalidation is the sweep wick extreme. If price has already moved past that
+  extreme the setup is STALE: its stop lands on the wrong side of entry, so `RiskEngine` rejects it
+  as `SL_ILLOGICAL` — yet the checks alone scored it 100 in the field. The strategy now requires
+  `price still beyond sweep invalidation` (price on the correct side of the extreme) as a hard
+  check, so phantom "perfect" setups never surface. Measured 109/720 (≈15%) of 5m/15m sweep
+  candidates were stale before the fix. Regression: `tests/test_advanced.py::TestStaleSweepGuard`.
+  - Trade-off: the sweep selection still prefers the most recent candidate (not the best-sided
+    one), so some cycles now correctly report "no sweep setup" instead of a stale one. Fixing the
+    candidate selection to prefer a valid-sided sweep is a possible future refinement.
 
 ## Git / delivery
 - Default remote: https://github.com/rtyupp/GOLDNBOY.git.

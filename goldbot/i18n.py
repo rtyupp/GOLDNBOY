@@ -24,6 +24,7 @@ CHECKS = {
     "HTF trend": "اتجاه الفريمات الكبيرة", "pullback to EMA": "ارتداد إلى المتوسط EMA", "VWAP": "فواب VWAP",
     "structure intact": "الهيكل سليم", "confirmation": "شمعة التأكيد", "momentum": "الزخم", "zone support": "منطقة داعمة",
     "liquidity sweep": "سحب سيولة", "candle confirmation": "تأكيد الشمعة بعد السحب", "CHoCH/BOS after sweep": "CHoCH/BOS بعد السحب",
+    "price still beyond sweep invalidation": "السعر لم يخترق مستوى إبطال السحب",
     "HTF not opposing": "الفريمات الكبيرة لا تعارض", "rejection / stop-hunt": "رفض سعري / صيد وقف", "quality pool": "مستوى سيولة قوي",
     "range / compression": "نطاق ضيق (ضغط)", "breakout close": "إغلاق خارج النطاق", "volume (tick) expansion": "توسع النشاط (Tick)",
     "retest holds": "إعادة اختبار ناجحة", "extreme": "تطرف سعري", "liquidity": "سيولة", "divergence": "دايفرجنس",
