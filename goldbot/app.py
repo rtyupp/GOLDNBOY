@@ -21,6 +21,7 @@ from goldbot.engine.pipeline import Pipeline
 from goldbot.monitor import CycleRecorder
 from goldbot.notify.chart import render_chart
 from goldbot.notify.telegram import Telegram, CommandBot, format_signal
+from goldbot.persist import JournalSync
 from goldbot.tracking.journal import Journal
 from goldbot.tracking.tracker import TradeTracker
 
@@ -29,16 +30,19 @@ log = logging.getLogger("app")
 
 class BotApp:
     def __init__(self, cfg: Cfg, tg: Optional[Telegram] = None, history_provider=None, live_factory=None,
-                 journal: Optional[Journal] = None):
+                 journal: Optional[Journal] = None, news=None, persist=None):
         self.cfg = cfg
         self.started = time.time()
         self.journal = journal or Journal(cfg.get("paths.journal", "data/journal.sqlite"))
         self.ticks = TickStore(cfg.get("data.max_tick_age_sec", 20))
         self.md = MarketData()
         self.builder = CandleBuilder(self.md.add_closed)
-        self.pipeline = Pipeline(cfg, self.journal)
+        self.pipeline = Pipeline(cfg, self.journal, news=news)
         self.recorder = CycleRecorder(cfg.get("paths.log_dir", "logs"))
         self.tg = tg
+        self.news = news
+        self.persist = persist or JournalSync(cfg)
+        self._near_miss_last: dict = {}
         self.history_provider = history_provider
         self.live_factory = live_factory
         self.notify_q: asyncio.Queue = asyncio.Queue()
@@ -116,6 +120,28 @@ class BotApp:
                 log.warning("ضغط ذاكرة %.0f%% من الحد — تم التنظيف", pr * 100)
             await asyncio.sleep(60)
 
+    async def news_loop(self):
+        """يحدّث تقويم الأخبار الاقتصادية دوريًا (مجاني، بلا مفاتيح). الفشل لا يوقف البوت."""
+        if self.news is None or not self.news.enabled:
+            return
+        while not self._stop:
+            try:
+                await asyncio.to_thread(self.news.refresh)
+            except Exception:
+                log.exception("فشل تحديث تقويم الأخبار")
+            await asyncio.sleep(1800)
+
+    async def persist_loop(self):
+        """ينسخ السجل إلى Gist خاص دوريًا حتى لا يضيع مع كل إعادة نشر على خطة بلا قرص."""
+        if not self.persist.ready:
+            return
+        while not self._stop:
+            await asyncio.sleep(60)
+            try:
+                await asyncio.to_thread(self.persist.push)
+            except Exception:
+                log.exception("فشل رفع السجل إلى Gist")
+
     # ------------------------------------------------------------------ one analysis cycle
     def data_status(self, as_of: pd.Timestamp):
         ok, why = self.ticks.check_fresh()
@@ -156,6 +182,7 @@ class BotApp:
         elif not cand.log.final.endswith("SENT"):
             cand.log.final = "NO TRADE"
             cand.log.reasons = cand.reasons
+            self._maybe_near_miss(cand, as_of)
         if closed:                                   # لا نملأ السجل كل دقيقة أثناء العطلة: مرة كل 30 دقيقة
             last = getattr(self, "_closed_log_ts", None)
             if last is None or (now - last).total_seconds() >= 1800:
@@ -164,6 +191,30 @@ class BotApp:
         else:
             self.recorder.record(cand.log)
         return cand
+
+    def _maybe_near_miss(self, cand, as_of):
+        """إعداد قوي (درجة عالية) مُنع بسبب بوابة — نبلّغ عنه حتى لا يكون الصمت غامضًا. بتهدئة زمنية لكل إعداد/اتجاه."""
+        if self.tg is None or self.cfg.get("mode") == "paper" or not self.cfg.get("near_miss.enabled", True):
+            return
+        if cand.ctx is None or not cand.results:
+            return
+        thr = float(self.cfg.get("near_miss.score", 80))
+        cooldown = float(self.cfg.get("near_miss.cooldown_min", 60))
+        best = max(cand.results, key=lambda r: r.score)
+        if best.score < thr:
+            return
+        key = (best.name, best.setup_tags.get("direction"))
+        last = self._near_miss_last.get(key)
+        if last is not None and (as_of - last).total_seconds() / 60.0 < cooldown:
+            return
+        self._near_miss_last[key] = as_of
+        b = best
+        gate = T.reasons_ar(cand.reasons) if cand.reasons else T.strategy_reason_ar(b.reason)
+        self.notify_q.put_nowait(
+            f"👀 فرصة قاربت — لم تتحقق شروط الدخول بعد\n"
+            f"الإعداد: {T.STRATEGY.get(b.name, b.name)}   الاتجاه: {T.DIR.get(b.signal, 'لا إشارة')}   الدرجة: {b.score:.0f}\n"
+            f"منعه: {gate}\n"
+            f"(ليست توصية — تنبيه فقط لاقتراب إعداد قوي)")
 
     def _apply_limits(self, cand, as_of):
         n_open = len(self.journal.open_trades())
@@ -344,6 +395,9 @@ class BotApp:
     async def run(self):
         self.loop = asyncio.get_running_loop()
         self.loop.set_default_executor(ThreadPoolExecutor(max_workers=24, thread_name_prefix="goldbot"))   # الافتراضي صغير (≈5) ويختنق
+        # استعادة السجل من Gist قبل أي شيء حتى يُستخدم في الاحتمال التاريخي فورًا
+        if self.persist.ready:
+            await asyncio.to_thread(self.persist.restore)
         if self.live_factory is None:
             from goldbot.providers.factory import make_live_provider
             self.live = make_live_provider(self.cfg, self.ticks.on_tick, self.ticks.set_connected)
@@ -351,7 +405,7 @@ class BotApp:
             self.live = self.live_factory(self.ticks.on_tick, self.ticks.set_connected)
         jobs = [("السعر اللحظي", self.live.run), ("البيانات التاريخية", self.load_history), ("التحليل", self.analysis_loop),
                 ("الإرسال", self.sender), ("الصيانة", self.housekeeping), ("الملخصات", self.summaries), ("فحص الصحة", self.health_server),
-                ("keep-alive", self.keepalive)]
+                ("الأخبار", self.news_loop), ("حفظ السجل", self.persist_loop), ("keep-alive", self.keepalive)]
         if self.cmd:
             jobs.append(("أوامر تيليجرام", self.cmd.run))
         if self.tg and self.cfg.get("mode") != "paper":
@@ -372,3 +426,7 @@ class BotApp:
             self.live.stop()
         if self.cmd:
             self.cmd.stop()
+        try:                                    # آخر نسخة من السجل قبل الإيقاف (نشر/إعادة تشغيل)
+            self.persist.push(force=True)
+        except Exception:
+            log.debug("تعذّر حفظ السجل عند الإيقاف", exc_info=True)

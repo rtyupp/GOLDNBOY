@@ -39,11 +39,12 @@ class Candidate:
 
 
 class Pipeline:
-    def __init__(self, cfg, journal=None, only: Optional[List[str]] = None):
+    def __init__(self, cfg, journal=None, only: Optional[List[str]] = None, news=None):
         self.cfg = cfg
         self.analyzer = Analyzer(cfg)
         self.risk = RiskEngine(cfg)
         self.prob_engine = ProbabilityEngine(journal, cfg) if journal is not None else None
+        self.news = news
         keys = only or cfg.get("strategies.enabled", [c.key for c in ALL])
         self.strategies = [c(cfg, self.risk) for c in ALL if c.key in keys]
 
@@ -64,6 +65,13 @@ class Pipeline:
         cand.ctx = ctx
         lg.set("CANDLES", "سليمة  " + " ".join(f"{tf}:{len(frames[tf])}" for tf in ("1m", "5m", "15m", "1H", "4H")))
         lg.set("INDICATORS", "سليمة")
+        if self.news is not None:
+            ev = self.news.block_until(as_of)
+            if ev is not None:
+                lg.extra["news"] = ev.label()
+                cand.reasons = [f"NEWS_BLACKOUT({ev.title}/{ev.currency})"]
+                cand.global_reasons = list(cand.reasons)
+                return self._done(cand)
         t = ctx.mtf["labels"]
         lg.set("STRUCTURE", " ".join(f"{tf}={T.TREND[t[tf]]}" for tf in ("4H", "1H", "15m", "5m", "1m")) + f" | الاتجاه العام={T.TREND.get(ctx.mtf['bias'], ctx.mtf['bias'])}/{T.STRENGTH[ctx.mtf['strength']]}")
         sw = [f"{T.SWEEP_KIND.get(s.kind, s.kind)} {'للأعلى' if s.expected == 'bull' else 'للأسفل'} ({s.pool_kind}){' مؤكد' if s.confirmed else ''}" for s in (ctx.tf["5m"].sweeps + ctx.tf["15m"].sweeps)[:3]]
