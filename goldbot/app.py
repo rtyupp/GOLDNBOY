@@ -59,6 +59,7 @@ class BotApp:
         self._summary_sent: set = set()
         self.live = None
         self._history_ready = False          # يمنع أول دورة تحليل من تقرير «تاريخ غير كافٍ» قبل انتهاء التحميل الأولي
+        self._history_attempted = False      # يصبح True بعد أول محاولة تحميل (نجحت أو فشلت) — بعده تعمل الدورات فتُظهر السبب الحقيقي
         self._tasks: list = []
         self._stop = False
         self._health_srv = None
@@ -80,6 +81,7 @@ class BotApp:
                 self.md.load_history(df)
                 self.md.history_error = None
                 self._history_ready = True
+                self._history_attempted = True
                 log.info("تم تحميل البيانات التاريخية: %s", self.md.summary())
                 if self.cfg.get("bootstrap.enabled", True):       # بناء السجل التاريخي تلقائيًا في الخلفية
                     t = asyncio.create_task(self.bootstrap.maybe_run())
@@ -88,6 +90,7 @@ class BotApp:
                 return
             except Exception as e:           # history failure never touches the live feed
                 self.md.history_error = f"{type(e).__name__}: {e}"
+                self._history_attempted = True       # أول محاولة انتهت: اسمح للدورات بالعمل لتُظهر سبب الفشل
                 retry = min(base_retry * (2 ** fails), 900.0)          # تأخير متزايد حتى 15 دقيقة: لا نضغط على مصدر يحجبنا
                 fails += 1
                 log.error("فشل تحميل البيانات التاريخية: %s (إعادة المحاولة بعد %.0f ثانية)", self.md.history_error, retry)
@@ -109,8 +112,9 @@ class BotApp:
             await self._analysis_tick()
 
     async def _analysis_tick(self):
-        """دورة تحليل واحدة. تُؤجّل حتى يكتمل أول تحميل للتاريخ حتى لا تُسجَّل دورة بـ0 شمعة كأنها «تاريخ غير كافٍ»."""
-        if not self._history_ready and self.md.history_rows == 0:
+        """دورة تحليل واحدة. تُؤجّل فقط أثناء أول محاولة تحميل للتاريخ حتى لا تُسجَّل دورة بـ0 شمعة
+        كأنها «تاريخ غير كافٍ». بعد أول محاولة (نجاحًا أو فشلًا) تعمل الدورات فتُظهر السبب الحقيقي."""
+        if not self._history_attempted:
             log.info("التحليل مؤجّل: لم يكتمل تحميل البيانات التاريخية الأولي بعد")
             return
         try:
