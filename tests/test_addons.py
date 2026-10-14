@@ -120,6 +120,15 @@ class TestNewsCalendar(unittest.TestCase):
         self.assertFalse(nl.refresh(force=True))
         self.assertEqual(s.get.call_count, 0)
 
+    def test_malformed_array_entries_do_not_crash_parser(self):
+        """Regression: a CDN error page or schema drift can put nulls / nested lists in the JSON
+        array. Those entries must be skipped, not crash the whole parse (which discarded the
+        calendar and let news through unblocked)."""
+        raw = [None, ["nested"], "str", 42, _raw("2026-10-13T12:30:00-04:00")[0]]
+        evs = _parse_events(raw, {"USD", "XAU"}, {"High"})
+        self.assertEqual(len(evs), 1)                          # الصالح فقط
+        self.assertEqual(evs[0].title, "Non-Farm Payrolls")
+
 
 # ------------------------------------------------------------------ persistence (Gist)
 class _FakeGitHub:

@@ -83,6 +83,22 @@
     one), so some cycles now correctly report "no sweep setup" instead of a stale one. Fixing the
     candidate selection to prefer a valid-sided sweep is a possible future refinement.
 
+## Shutdown / resilience
+- SIGTERM must terminate the process. The `/health` server used to `await srv.serve_forever()`
+  with no stop check, so `asyncio.gather(*tasks)` in `run()` never returned and Render SIGKILLed
+  the container after every deploy (no clean stop, no final journal push). `BotApp` now stores
+  `self._health_srv`, closes it in `stop()`, cancels tasks, and `run()` awaits the cancelled
+  tasks. Regression: `tests/test_review_regressions.py::TestGracefulShutdown`.
+- Strategies are evaluated in isolation: `Pipeline._eval` wraps `strategy.evaluate` and turns any
+  exception into a `NONE` result with `reason="strategy error"`. One bad strategy (or a degenerate
+  ATR) must not abort the whole minute's analysis / signal path. Regression:
+  `TestStrategyIsolation::test_crashing_strategy_becomes_none_and_others_run`.
+- `Analyzer.tf_state` rejects `atr <= 0` as well as NaN (`not (atr > 0)`). A zero/negative ATR
+  previously reached `RiskEngine.build` and raised `ZeroDivisionError`. Regression:
+  `test_nonpositive_atr_is_rejected_not_divided_by`.
+- News JSON is untrusted: `_parse_events` skips non-dict array entries (nulls, nested lists,
+  strings from a CDN error page) instead of raising `AttributeError` and discarding the calendar.
+
 ## Git / delivery
 - Default remote: https://github.com/rtyupp/GOLDNBOY.git.
 - The injected `$GITHUB_TOKEN` is READ-ONLY (403 on push). Pushing requires the user's PAT,

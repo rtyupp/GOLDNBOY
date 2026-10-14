@@ -6,6 +6,7 @@ historical probability -> risk -> BUY / SELL / NO TRADE.  Same code path for liv
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
+import logging
 import pandas as pd
 
 from goldbot.analysis.analyzer import Analyzer, Ctx
@@ -17,6 +18,8 @@ from goldbot.models import StrategyResult
 from goldbot.monitor import CycleLog
 from goldbot.strategies.impl import ALL
 from goldbot import i18n as T
+
+log = logging.getLogger("pipeline")
 
 
 @dataclass
@@ -47,6 +50,15 @@ class Pipeline:
         self.news = news
         keys = only or cfg.get("strategies.enabled", [c.key for c in ALL])
         self.strategies = [c(cfg, self.risk) for c in ALL if c.key in keys]
+
+    def _eval(self, strategy, ctx) -> StrategyResult:
+        """Evaluate one strategy, converting any exception into a NONE result. A single bad
+        strategy (or a degenerate ATR) must not abort the whole analysis cycle / signal path."""
+        try:
+            return strategy.evaluate(ctx)
+        except Exception:
+            log.exception("انهارت الاستراتيجية «%s» — تُتجاهل في هذه الدورة", strategy.label)
+            return StrategyResult(strategy.label, "NONE", 0.0, reason="strategy error")
 
     def prepare(self, frames: Dict[str, pd.DataFrame], bid: float, ask: float, as_of: pd.Timestamp,
                 data_ok: bool = True, data_reason: str = "OK", use_probability: bool = True) -> Candidate:
@@ -80,8 +92,8 @@ class Pipeline:
 
         reasons = no_trade.global_gates(self.cfg, ctx, True, "OK")
         cand.global_reasons = list(reasons)
-        # ---- strategies
-        cand.results = [s.evaluate(ctx) for s in self.strategies]
+        # ---- strategies (each isolated: one bad strategy must not kill the whole cycle)
+        cand.results = [self._eval(s, ctx) for s in self.strategies]
         valid = [r for r in cand.results if r.signal != "NONE"]
         lg.set("STRATEGY", " ؛ ".join(f"{T.STRATEGY.get(r.name, r.name)}: " + (f"{T.DIR[r.signal]} ({r.score:.0f})" if r.signal != "NONE" else f"لا إشارة ({r.score:.0f}) [{T.strategy_reason_ar(r.reason)[:60]}]") for r in cand.results))
         if not valid:

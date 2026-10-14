@@ -12,6 +12,7 @@ data/*.sqlite-*
 logs/
 reports/backtest_*.json
 reports/trades_*.csv
+reports/compare_*.json
 *.log
 
 data/bootstrap.json
