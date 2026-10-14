@@ -84,6 +84,12 @@
     candidate selection to prefer a valid-sided sweep is a possible future refinement.
 
 ## Shutdown / resilience
+- Cold start: the analysis loop must not run before the initial history load. Otherwise the
+  first cycle at every deploy records a misleading `INSUFFICIENT_HISTORY(0<500)` (0 rows
+  because `load_history` has not returned yet), which looks like a broken data feed. `BotApp`
+  tracks `_history_ready` (set only after a successful load) and `_analysis_tick` defers the
+  cycle while `not _history_ready and history_rows == 0`. Regression:
+  `tests/test_review_regressions.py::TestStartupHistoryGate`.
 - SIGTERM must terminate the process. The `/health` server used to `await srv.serve_forever()`
   with no stop check, so `asyncio.gather(*tasks)` in `run()` never returned and Render SIGKILLed
   the container after every deploy (no clean stop, no final journal push). `BotApp` now stores
