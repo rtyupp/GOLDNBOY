@@ -404,5 +404,54 @@ class TestGracefulShutdown(unittest.TestCase):
             os.environ.pop("PORT", None)
 
 
+class TestStartupHistoryGate(unittest.TestCase):
+    """The first analysis cycle used to run before the initial history load finished, so it
+    recorded a misleading INSUFFICIENT_HISTORY(0<500) cycle at every cold start (seen in a
+    Render deploy log). The analysis tick must now be deferred until history is ready."""
+
+    def test_analysis_tick_deferred_until_history_ready(self):
+        import asyncio
+
+        async def go():
+            c, app = mkapp(mode="paper")
+            app.md.history_rows = 0
+            app._history_ready = False
+            called = []
+
+            async def fake_cycle():
+                called.append(1)
+
+            app.cycle = fake_cycle
+            await app._analysis_tick()
+            self.assertEqual(called, [], "cycle ran before history was ready")
+
+            app._history_ready = True                 # بعد اكتمال التحميل تعمل الدورة
+            await app._analysis_tick()
+            self.assertEqual(len(called), 1)
+
+        asyncio.run(go())
+
+    def test_history_ready_flag_set_after_successful_load(self):
+        """load_history must flip the flag only after a successful load."""
+        import asyncio
+
+        async def go():
+            c, app = mkapp(mode="paper")
+            self.assertFalse(app._history_ready)
+            task = asyncio.create_task(app.load_history())
+            for _ in range(200):
+                await asyncio.sleep(0.02)
+                if app._history_ready:
+                    break
+            app._stop = True
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+            self.assertTrue(app._history_ready, "flag not set after successful history load")
+            self.assertGreater(app.md.history_rows, 0)
+
+        asyncio.run(go())
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -58,6 +58,7 @@ class BotApp:
             self.cmd.chart_for_command = self._price_chart
         self._summary_sent: set = set()
         self.live = None
+        self._history_ready = False          # يمنع أول دورة تحليل من تقرير «تاريخ غير كافٍ» قبل انتهاء التحميل الأولي
         self._tasks: list = []
         self._stop = False
         self._health_srv = None
@@ -78,6 +79,7 @@ class BotApp:
                     raise RuntimeError(f"التاريخ غير كافٍ: {len(df)} شمعة 1m (المطلوب {min_rows})")
                 self.md.load_history(df)
                 self.md.history_error = None
+                self._history_ready = True
                 log.info("تم تحميل البيانات التاريخية: %s", self.md.summary())
                 if self.cfg.get("bootstrap.enabled", True):       # بناء السجل التاريخي تلقائيًا في الخلفية
                     t = asyncio.create_task(self.bootstrap.maybe_run())
@@ -104,10 +106,17 @@ class BotApp:
         while not self._stop:
             now = time.time()
             await asyncio.sleep(60 - (now % 60) + off)
-            try:
-                await self.cycle()
-            except Exception:
-                log.exception("انهارت دورة التحليل (البوت يستمر بالعمل)")
+            await self._analysis_tick()
+
+    async def _analysis_tick(self):
+        """دورة تحليل واحدة. تُؤجّل حتى يكتمل أول تحميل للتاريخ حتى لا تُسجَّل دورة بـ0 شمعة كأنها «تاريخ غير كافٍ»."""
+        if not self._history_ready and self.md.history_rows == 0:
+            log.info("التحليل مؤجّل: لم يكتمل تحميل البيانات التاريخية الأولي بعد")
+            return
+        try:
+            await self.cycle()
+        except Exception:
+            log.exception("انهارت دورة التحليل (البوت يستمر بالعمل)")
 
     async def housekeeping(self):
         """يغلق الصفقات المنتهية المدة (انتهاء صلاحية الصفقة)."""
