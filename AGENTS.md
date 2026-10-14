@@ -87,8 +87,10 @@
 - Cold start: the analysis loop must not run before the initial history load. Otherwise the
   first cycle at every deploy records a misleading `INSUFFICIENT_HISTORY(0<500)` (0 rows
   because `load_history` has not returned yet), which looks like a broken data feed. `BotApp`
-  tracks `_history_ready` (set only after a successful load) and `_analysis_tick` defers the
-  cycle while `not _history_ready and history_rows == 0`. Regression:
+  sets `_history_attempted` once the **first** load attempt finishes (success *or* failure) and
+  `_analysis_tick` defers the cycle only while it is still in flight. Gating on "ready" instead
+  would freeze the analysis forever during a real feed outage, hiding it from cycles and `/why`.
+  `_history_ready` is set only on a successful load. Regression:
   `tests/test_review_regressions.py::TestStartupHistoryGate`.
 - SIGTERM must terminate the process. The `/health` server used to `await srv.serve_forever()`
   with no stop check, so `asyncio.gather(*tasks)` in `run()` never returned and Render SIGKILLed

@@ -407,15 +407,50 @@ class TestGracefulShutdown(unittest.TestCase):
 class TestStartupHistoryGate(unittest.TestCase):
     """The first analysis cycle used to run before the initial history load finished, so it
     recorded a misleading INSUFFICIENT_HISTORY(0<500) cycle at every cold start (seen in a
-    Render deploy log). The analysis tick must now be deferred until history is ready."""
+    Render deploy log). The analysis tick must be deferred while the initial load is in flight,
+    but must run again as soon as that attempt finishes - success or failure - so a real feed
+    outage still surfaces through the normal cycle/`/why` path instead of being hidden forever."""
 
-    def test_analysis_tick_deferred_until_history_ready(self):
+    def test_analysis_tick_deferred_only_while_load_in_flight(self):
+        import asyncio
+
+        async def go():
+            c, app = mkapp(mode="paper")
+            called = []
+
+            async def fake_cycle():
+                called.append(1)
+
+            app.cycle = fake_cycle
+            app._history_attempted = False            # التحميل الأولي ما زال جاريًا
+            await app._analysis_tick()
+            self.assertEqual(called, [], "cycle ran while the initial history load was in flight")
+
+            app._history_attempted = True             # بعد أول محاولة (نجحت أو فشلت) تعمل الدورة
+            await app._analysis_tick()
+            self.assertEqual(len(called), 1)
+
+        asyncio.run(go())
+
+    def test_failed_initial_load_still_allows_cycles(self):
+        """فشل التحميل الأولي لا يجب أن يُجمّد التحليل للأبد — الدورة تعمل فيظهر سبب الفشل."""
         import asyncio
 
         async def go():
             c, app = mkapp(mode="paper")
             app.md.history_rows = 0
-            app._history_ready = False
+            with mock.patch("goldbot.app.load_cached", side_effect=RuntimeError("feed down")):
+                task = asyncio.create_task(app.load_history())
+                for _ in range(200):
+                    await asyncio.sleep(0.02)
+                    if app._history_attempted:
+                        break
+                app._stop = True
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+            self.assertTrue(app._history_attempted)
+            self.assertFalse(app._history_ready)
             called = []
 
             async def fake_cycle():
@@ -423,11 +458,7 @@ class TestStartupHistoryGate(unittest.TestCase):
 
             app.cycle = fake_cycle
             await app._analysis_tick()
-            self.assertEqual(called, [], "cycle ran before history was ready")
-
-            app._history_ready = True                 # بعد اكتمال التحميل تعمل الدورة
-            await app._analysis_tick()
-            self.assertEqual(len(called), 1)
+            self.assertEqual(len(called), 1, "cycles stayed frozen after a failed history load")
 
         asyncio.run(go())
 
@@ -448,6 +479,7 @@ class TestStartupHistoryGate(unittest.TestCase):
             with contextlib.suppress(asyncio.CancelledError):
                 await task
             self.assertTrue(app._history_ready, "flag not set after successful history load")
+            self.assertTrue(app._history_attempted)
             self.assertGreater(app.md.history_rows, 0)
 
         asyncio.run(go())
