@@ -55,6 +55,13 @@
 - Honest result on 28d: the whole ensemble is negative IS+OOS; loosening gates only adds losers.
   Only Round Number had a clear positive stat (n=15, avgR +0.40). Never present a small-sample
   improvement as proven — check the walk-forward out-of-sample slice and report trade counts.
+- Multi-fold walk-forward: `engine/walk_forward_folds` splits the trade list into `backtest.wf_folds`
+  (default 4) chronological folds and scores each on its own. `compare.verdict` now also requires
+  `walk_forward_folds.consistent` (a majority of folds positive) so a strategy that only wins on one
+  lucky slice is rejected — a single 70/30 split could hide that. Empty when the sample is too small
+  to fold (folds are then not enforced). Reports include `walk_forward_folds` next to `walk_forward_split`.
+- `/stats` breaks closed trades down by strategy, session, market regime (1H trend, read from the
+  stored fingerprint) and UTC hour, so a weak regime/hour is visible without a backtest run.
 
 ## Add-ons (guardrails & persistence)
 - News filter: `goldbot/providers/news.py` (free ForexFactory weekly JSON, no key). Wired into

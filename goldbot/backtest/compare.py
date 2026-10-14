@@ -35,7 +35,11 @@ def verdict(rep: dict) -> str:
     if n < MIN_TRADES:
         return f"عينة غير كافية ({n}<{MIN_TRADES})"
     oos = (rep.get("walk_forward_split") or {}).get("out_of_sample", {})
-    ok = rep.get("avg_r", 0) > 0 and (rep.get("profit_factor") or 0) > 1 and oos.get("avg_r", -1) > 0
+    folds = rep.get("walk_forward_folds") or {}
+    # A single 70/30 split can hide an edge that only exists on one slice; when folds are
+    # available they must agree (majority of folds positive) as well.
+    fold_ok = folds.get("consistent", True)
+    ok = rep.get("avg_r", 0) > 0 and (rep.get("profit_factor") or 0) > 1 and oos.get("avg_r", -1) > 0 and fold_ok
     return "مقبولة ✅" if ok else "مرفوضة ❌"
 
 

@@ -25,6 +25,14 @@ CREATE INDEX IF NOT EXISTS idx_ht ON history_trades(setup, direction);
 """
 
 
+def _regime_of(fp) -> str:
+    """حالة السوق (اتجاه 1H) محفوظة داخل بصمة الإشارة؛ تُستخدم لتقسيم الإحصائيات حسب الحالة."""
+    try:
+        return (json.loads(fp) or {}).get("regime") or "غير معروف"
+    except (TypeError, ValueError):
+        return "غير معروف"
+
+
 class Journal:
     def __init__(self, path: str = "data/journal.sqlite"):
         d = os.path.dirname(path)
@@ -148,6 +156,12 @@ class Journal:
                    sl=int((df["result"] == "SL").sum()))
         out["by_strategy"] = df.groupby("strategy")["r"].agg(["count", "mean"]).round(2).to_dict("index")
         out["by_session"] = df.groupby("session")["r"].agg(["count", "mean"]).round(2).to_dict("index")
+        d = df[df["r"].notna()].copy()
+        if not d.empty:
+            d["hour"] = pd.to_datetime(d["timestamp"], utc=True).dt.hour
+            out["by_hour"] = d.groupby("hour")["r"].agg(["count", "mean"]).round(2).to_dict("index")
+            d["regime"] = d["fingerprint"].map(_regime_of)
+            out["by_regime"] = d.groupby("regime")["r"].agg(["count", "mean"]).round(2).to_dict("index")
         return out
 
     # ---------------- history for probability ----------------

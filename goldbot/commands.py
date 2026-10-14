@@ -106,6 +106,11 @@ def build_handlers(app) -> dict:
                f"حماية رأس المال: {prot}", "", "حسب الاستراتيجية:"]
         out += [f"- {T.STRATEGY.get(k, k)}: عدد {v['count']}  متوسط R {v['mean']}" for k, v in s.get("by_strategy", {}).items()]
         out += ["", "حسب الجلسة:"] + [f"- {T.SESSION.get(k, k)}: عدد {v['count']}  متوسط R {v['mean']}" for k, v in s.get("by_session", {}).items()]
+        if s.get("by_regime"):
+            out += ["", "حسب حالة السوق (اتجاه 1H):"] + [f"- {T.TREND.get(k, k)}: عدد {v['count']}  متوسط R {v['mean']}" for k, v in s["by_regime"].items()]
+        if s.get("by_hour"):
+            hrs = sorted(s["by_hour"].items(), key=lambda kv: int(kv[0]))
+            out += ["", "حسب ساعة UTC:"] + [f"- {int(k):02d}:00: عدد {v['count']}  متوسط R {v['mean']}" for k, v in hrs]
         return "\n".join(out)
 
     def history(args):
