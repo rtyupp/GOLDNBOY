@@ -101,6 +101,7 @@ class Bootstrapper:
             notify(f"🧠 بدأت التهيئة الذاتية ({plan['why']}): أبني السجل من آخر {days} يومًا ({', '.join(tfs)}).\n"
                    "تعمل في الخلفية وأراقب الذاكرة؛ السعر اللحظي والأوامر تعمل كالمعتاد.")
             log_path = os.path.join(self.cfg.get("paths.log_dir", "logs"), "bootstrap.log")
+            failures = []
             for tf in tfs:
                 t0 = time.time()
                 rc, tail = await self.runner([sys.executable, "-m", "goldbot", "backtest", "--tf", tf, "--days", str(days), "--store",
@@ -112,12 +113,21 @@ class Bootstrapper:
                     notify(msg)
                     return False
                 if rc != 0:
-                    msg = f"⚠️ فشل بناء السجل لفريم {tf} (رمز {rc}). التفاصيل في logs/bootstrap.log"
-                    self.last_summary = msg
-                    notify(msg)
-                    return False
+                    # A single frame failing must not discard the frames that already succeeded
+                    # (the 5m sample is written before 15m runs). Record and continue; only a total
+                    # wipeout below min_trades is reported as a hard failure.
+                    detail = (tail or "").strip().splitlines()[-4:]
+                    detail = " | ".join(detail)[-400:]
+                    failures.append(f"{tf} (رمز {rc})" + (f": {detail}" if detail else ""))
+                    log.warning("فشل Backtest %s (رمز %s): %s", tf, rc, detail or "-")
+                    continue
                 log.info("اكتمل Backtest %s خلال %.0f ثانية", tf, time.time() - t0)
             n = await asyncio.to_thread(self.backtest_trades)
+            if failures and n < int(self.cfg.get("bootstrap.min_trades", 150)):
+                msg = "⚠️ فشل بناء السجل: " + " ؛ ".join(failures)
+                self.last_summary = msg
+                notify(msg)
+                return False
             self.last_summary = f"{n} صفقة تاريخية."
             os.makedirs(os.path.dirname(self.marker) or ".", exist_ok=True)
             with open(self.marker, "w", encoding="utf-8") as f:

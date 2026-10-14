@@ -67,6 +67,13 @@
   `backtest.news_window_min`). `python -m goldbot compare` reads event times from the local calendar
   cache (no network) and passes them in. All multipliers default to none/0, so the spread stays flat
   as before until enabled. Costs block in the report records the base spread + multipliers.
+- Report filenames are sanitized (`save_report`): strategy labels can contain `/`
+  (`Liquidity Grab (PDH/PDL)`), and an unsanitized label made pandas write into a non-existent
+  subdirectory — an `OSError` that aborted the whole bootstrap subprocess with exit code 1. This was
+  data-dependent (it only crashed when that strategy produced ≥1 trade in the frame), so 5m passed
+  while 15m failed. `bootstrap.run` now also continues past a single frame failure (keeping the frames
+  that already stored trades) and surfaces the subprocess error tail in the notification, instead of
+  pointing at `logs/bootstrap.log`, which is not reachable from the Render dashboard.
 - Adaptive confluence threshold (`confluence.adaptive_*`, off by default): when the recent average R
   over the last `adaptive_lookback` closed trades is negative (and at least `adaptive_min_samples`
   exist), `no_trade.adaptive_min_score` raises the effective `min_score` by `adaptive_step` (capped by

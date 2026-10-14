@@ -2,7 +2,7 @@ import os, tempfile, unittest
 import numpy as np, pandas as pd
 from tests.helpers import cfg
 from goldbot.models import RiskPlan
-from goldbot.backtest.engine import simulate_trade, metrics, run_backtest, store_probability_history, walk_forward_folds
+from goldbot.backtest.engine import simulate_trade, metrics, run_backtest, store_probability_history, walk_forward_folds, save_report
 from goldbot.backtest.compare import verdict
 from goldbot.providers.synthetic import make_synthetic_1m
 from goldbot.tracking.journal import Journal
@@ -143,6 +143,22 @@ class TestRun(unittest.TestCase):
         j = Journal(os.path.join(tempfile.mkdtemp(), "j.sqlite"))
         n = store_probability_history(j, res)
         self.assertEqual(len(j.history_trades()), n)
+
+    def test_save_report_handles_slash_in_strategy_label(self):
+        """"Liquidity Grab (PDH/PDL)" contains a "/" — an unsanitized label made pandas try to
+        write into a non-existent subdirectory, aborting the bootstrap subprocess with code 1."""
+        def df(setup):
+            return pd.DataFrame([{"ts": "2026-10-01T00:00:00+00:00", "r": 1.0, "outcome": "TP2", "setup": setup,
+                                  "direction": "BUY", "session": "London", "regime": "BULLISH",
+                                  "duration_min": 5.0, "score": 70.0}])
+        books = {"Liquidity Grab (PDH/PDL)": df("Liquidity Grab (PDH/PDL)"), "ALL": df("x")}
+        res = {"eval_tf": "15m", "strategies": {}, "combined": {}, "books": books}
+        d = tempfile.mkdtemp()
+        path = save_report(res, d)                              # لا يجب أن يرمي استثناء
+        self.assertTrue(os.path.exists(path))
+        self.assertTrue(any(f.startswith("trades_15m_Liquidity_Grab") and f.endswith(".csv")
+                            for f in os.listdir(d)))
+        self.assertTrue(all(os.sep not in f for f in os.listdir(d)))
 
 
 if __name__ == "__main__":

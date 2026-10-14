@@ -61,6 +61,40 @@ class TestBootstrapLogic(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(os.path.exists(app.bootstrap.marker))
         self.assertFalse(app.bootstrap.running)
 
+    async def test_one_frame_failure_keeps_other_frames(self):
+        """فشل فريم واحد (مثل 15m) لا يجب أن يُهدر الفريم الناجح (5m) ولا يُفشل التهيئة كليًا."""
+        c, app = mkapp()
+        fill_history(app, 200)                                  # 5m نجح ووصلت صفقاته فوق min_trades
+        seen = []
+
+        async def runner(cmd, log_path, timeout):
+            seen.append(cmd[cmd.index("--tf") + 1])
+            return (1, "Cannot save file into a non-existent directory") if seen[-1] == "15m" else (0, "")
+        app.bootstrap.runner = runner
+        ok = await app.bootstrap.run(True)
+        self.assertTrue(ok)
+        self.assertEqual(seen, ["5m", "15m"])
+        self.assertTrue(os.path.exists(app.bootstrap.marker))    # 5m محفوظ ⇒ marker يُكتب
+        msgs = []
+        while not app.notify_q.empty():
+            msgs.append(app.notify_q.get_nowait())
+        self.assertTrue(any("اكتملت التهيئة" in m for m in msgs))
+
+    async def test_total_wipeout_reports_failure_and_details(self):
+        """إن فشل كل الفريمات (لا صفقات) تُبلَّغ التفاصيل ولا يُكتب marker."""
+        c, app = mkapp()
+
+        async def runner(cmd, log_path, timeout):
+            return 1, "Traceback: boom"
+        app.bootstrap.runner = runner
+        self.assertFalse(await app.bootstrap.run(True))
+        msgs = []
+        while not app.notify_q.empty():
+            msgs.append(app.notify_q.get_nowait())
+        self.assertTrue(any("فشل بناء السجل" in m for m in msgs))
+        self.assertTrue(any("boom" in m for m in msgs))          # التفاصيل ظاهرة بلا حاجة لملف السجل
+        self.assertFalse(os.path.exists(app.bootstrap.marker))
+
     async def test_no_double_run(self):
         c, app = mkapp()
         gate = asyncio.Event()
