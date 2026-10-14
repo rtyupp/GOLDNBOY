@@ -38,6 +38,16 @@
 - `filters.block_regimes` (default `[]`): global gate `REGIME_BLOCK(<1H trend>)` in
   `engine/no_trade.py::global_gates`. Evidence (28d, no confluence gate): TRANSITION avgR -0.34,
   BEARISH -0.36 vs BULLISH +0.30, RANGE +0.34. Strongest lever found, but small sample → off by default.
+- Capital protection (default OFF, `signals.max_daily_loss_r=0`, `signals.max_consecutive_losses=0`):
+  `engine/no_trade.py::capital_gates` runs in `BotApp._apply_limits` only after a candidate is
+  already tradable, so empty cycles are not tinted. `DAILY_LOSS_LIMIT(-X R)` sums realized R of
+  trades CLOSED since UTC midnight (`Journal.realized_r_since`); `LOSS_STREAK(N)` counts trailing
+  closed losses (`Journal.consecutive_losses`, reset by a win). Both are advisory caps on NEW
+  signals — they never touch open trades. `/stats` shows the current standing via
+  `BotApp.protection_status`. Tests: `tests/test_capital.py`.
+- Position sizing (display only, `risk.account_balance=0` disables): `engine/risk.py::position_size`
+  turns balance × `risk_per_trade_pct` and the plan's stop distance into lots/oz for the signal
+  message (gold: 1 lot = 100 oz). Never alters the decision.
 
 ## Backtesting / comparing (no fabricated edge)
 - `python -m goldbot compare` now runs baseline / +SMC / +advanced (with costs) / all (no costs),

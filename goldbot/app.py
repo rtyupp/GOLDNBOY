@@ -18,6 +18,7 @@ from goldbot.core.history_store import load_cached
 from goldbot.core.market_data import MarketData
 from goldbot.core.tick_store import TickStore
 from goldbot.engine.pipeline import Pipeline
+from goldbot.engine import no_trade
 from goldbot.monitor import CycleRecorder
 from goldbot.notify.chart import render_chart
 from goldbot.notify.telegram import Telegram, CommandBot, format_signal
@@ -212,13 +213,44 @@ class BotApp:
         cd = float(self.cfg.get("signals.cooldown_min", 30))
         if last is not None and (as_of - last).total_seconds() / 60.0 < cd:
             cand.reasons.append(f"COOLDOWN({cd:.0f}min)")
+        cand.reasons += no_trade.capital_gates(self.cfg, self.journal, as_of)   # حد الخسارة اليومي / سلسلة الخسائر
         if cand.reasons:
             cand.log.final, cand.log.reasons = "NO TRADE", cand.reasons
+
+    def _size_line(self, plan) -> str:
+        """سطر «حجم المركز المقترح» إن حُدّد رصيد الحساب. عرض فقط، لا يغيّر القرار."""
+        try:
+            from goldbot.engine.risk import position_size
+            sz = position_size(plan, float(self.cfg.get("risk.account_balance", 0) or 0),
+                               float(self.cfg.get("risk.risk_per_trade_pct", 1.0) or 0))
+        except (TypeError, ValueError):
+            return ""
+        if not sz:
+            return ""
+        return f"{sz['lots']:.2f} لوت ({sz['oz']:.1f} أونصة) — مخاطرة {sz['risk_cash']:.0f}$"
+
+    def protection_status(self) -> str:
+        """ملخص حماية رأس المال للعرض في /stats: خسارة اليوم المحققة وسلسلة الخسائر مقابل الحدود."""
+        now = pd.Timestamp.now(tz="UTC")
+        day_r = self.journal.realized_r_since(now.normalize())
+        streak = self.journal.consecutive_losses()
+        max_daily = float(self.cfg.get("signals.max_daily_loss_r", 0) or 0)
+        max_streak = int(self.cfg.get("signals.max_consecutive_losses", 0) or 0)
+        if max_daily <= 0 and max_streak <= 0:
+            return "معطّلة (لا حد خسارة يومي ولا سلسلة خسائر)"
+        parts = []
+        if max_daily > 0:
+            parts.append(f"خسارة اليوم {day_r:+.2f}R من أصل {-max_daily:.2f}R" + (" ⛔ متوقف" if day_r <= -max_daily else ""))
+        if max_streak > 0:
+            parts.append(f"خسائر متتالية {streak}/{max_streak}" + (" ⛔ متوقف" if streak >= max_streak else ""))
+        return "   ".join(parts)
 
     async def emit_signal(self, cand):
         b, ctx, plan = cand.best, cand.ctx, cand.best.plan
         prob_txt = cand.prob.text() if (cand.prob and cand.prob.sufficient) else "غير كافٍ (لا توجد عينة تاريخية كافية)"
-        text = format_signal(plan, b.name, ctx.session["label"], cand.confluence, prob_txt, T.strategy_reason_ar(b.reason))
+        size_line = self._size_line(plan)
+        text = format_signal(plan, b.name, ctx.session["label"], cand.confluence, prob_txt,
+                             T.strategy_reason_ar(b.reason), size_line)
         sent = True
         if self.tg is not None and self.cfg.get("mode") != "paper":
             res = await asyncio.to_thread(self.tg.send_signal, text)

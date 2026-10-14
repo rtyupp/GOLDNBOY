@@ -48,3 +48,23 @@ def setup_gates(cfg, best, confluence_score: float, prob) -> List[str]:
         elif cfg.get("probability.block_if_insufficient", True):
             r.append(f"PROBABILITY_UNAVAILABLE(n={prob.n}<{cfg.get('probability.min_samples', 30)})")
     return r
+
+
+def capital_gates(cfg, journal, as_of) -> List[str]:
+    """حماية رأس المال: توقف عن إصدار إشارات جديدة بعد خسارة يومية أو سلسلة خسائر (اختياري، 0 = معطّل).
+    لا يعتمد على ctx: تُقيَّد فقط بعد أن يكون هناك إعداد قابل للتداول حتى لا تُلوَّن الدورات الفارغة."""
+    if journal is None:
+        return []
+    r: List[str] = []
+    max_daily = float(cfg.get("signals.max_daily_loss_r", 0) or 0)
+    if max_daily > 0:
+        start = as_of.normalize() if as_of.tzinfo else as_of.tz_localize("UTC").normalize()
+        day_r = journal.realized_r_since(start)
+        if day_r <= -max_daily:
+            r.append(f"DAILY_LOSS_LIMIT({day_r:+.2f}R<={-max_daily:.2f}R)")
+    max_streak = int(cfg.get("signals.max_consecutive_losses", 0) or 0)
+    if max_streak > 0:
+        streak = journal.consecutive_losses()
+        if streak >= max_streak:
+            r.append(f"LOSS_STREAK({streak}>={max_streak})")
+    return r

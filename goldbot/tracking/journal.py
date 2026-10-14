@@ -103,6 +103,35 @@ class Journal:
             r = self.db.execute(q, (direction,) if direction else ()).fetchone()
         return pd.Timestamp(r["timestamp"]) if r else None
 
+    def realized_r_since(self, start: pd.Timestamp) -> float:
+        """مجموع R للصفقات المغلقة التي أُغلقت عند/بعد `start` (لحد الخسارة اليومي)."""
+        with self.lock:
+            rows = self.db.execute(
+                "SELECT r, closed_ts FROM signals WHERE status='CLOSED' AND r IS NOT NULL AND closed_ts IS NOT NULL"
+            ).fetchall()
+        total = 0.0
+        for r in rows:
+            try:
+                if pd.Timestamp(r["closed_ts"]) >= start:
+                    total += float(r["r"])
+            except (ValueError, TypeError):
+                continue
+        return total
+
+    def consecutive_losses(self) -> int:
+        """عدد الخسائر المتتالية في نهاية سلسلة الصفقات المغلقة (تُصفَّر بأول صفقة رابحة عند العد من الأحدث)."""
+        with self.lock:
+            rows = self.db.execute(
+                "SELECT r FROM signals WHERE status='CLOSED' AND r IS NOT NULL ORDER BY id DESC"
+            ).fetchall()
+        n = 0
+        for r in rows:
+            if float(r["r"]) <= 0:
+                n += 1
+            else:
+                break
+        return n
+
     def stats(self) -> Dict[str, Any]:
         with self.lock:
             df = pd.read_sql_query("SELECT * FROM signals WHERE status='CLOSED'", self.db)
