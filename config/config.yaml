@@ -91,11 +91,6 @@ news:                       # فلتر الأخبار الاقتصادية (مص
   timeout_sec: 15
   cache: data/cache/news.json
 
-near_miss:                  # تنبيه «فرصة قاربت»: إعداد قوي مُنع بسبب بوابة (تنبيه فقط، ليس توصية)
-  enabled: true
-  score: 80                 # أبلغ فقط إذا بلغت درجة أفضل إعداد هذه العتبة
-  cooldown_min: 60          # تهدئة لكل إعداد/اتجاه حتى لا يتكرر التنبيه
-
 persistence:                # حفظ السجل (journal.sqlite) عبر Gist خاص ليبقى بعد كل إعادة نشر
   enabled: true             # يعمل تلقائيًا متى وُجد GITHUB_TOKEN (صلاحية gist)
   filename: goldbot-journal.sqlite

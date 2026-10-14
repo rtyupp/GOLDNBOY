@@ -1,4 +1,4 @@
-"""اختبارات الإضافات: تنبيه «فرصة قاربت»، فلتر الأخبار، وحفظ السجل عبر Gist (كلها بلا شبكة)."""
+"""اختبارات الإضافات: فلتر الأخبار، وحفظ السجل عبر Gist (كلها بلا شبكة)."""
 import base64
 import os
 import tempfile
@@ -10,40 +10,7 @@ import pandas as pd
 from goldbot.providers.news import NewsCalendar, NewsEvent, _parse_events
 from goldbot.persist import JournalSync, _safe_copy
 from goldbot.tracking.journal import Journal
-from tests.helpers import cfg, mkapp, series_from_closes
-
-
-# ------------------------------------------------------------------ near-miss
-class TestNearMiss(unittest.TestCase):
-    def _cand(self, score=90):
-        from goldbot.engine.pipeline import Candidate
-        from goldbot.models import StrategyResult
-        r = StrategyResult(name="liquidity_sweep", signal="NONE", score=score, reason="missing: x")
-        r.setup_tags["direction"] = "bull"
-        c = Candidate(ctx=mock.Mock(), log=mock.Mock())
-        c.results = [r]
-        return c
-
-    def test_near_miss_sent_once_then_cooldown(self):
-        c, app = mkapp(near_miss__score=80, near_miss__cooldown_min=60)
-        t0 = pd.Timestamp("2026-10-13 06:00", tz="UTC")
-        app._maybe_near_miss(self._cand(90), t0)
-        self.assertEqual(app.notify_q.qsize(), 1)
-        app._maybe_near_miss(self._cand(90), t0 + pd.Timedelta(minutes=5))     # داخل التهدئة
-        self.assertEqual(app.notify_q.qsize(), 1)
-        app._maybe_near_miss(self._cand(90), t0 + pd.Timedelta(minutes=61))    # بعد التهدئة
-        self.assertEqual(app.notify_q.qsize(), 2)
-
-    def test_below_threshold_is_silent(self):
-        c, app = mkapp(near_miss__score=80)
-        app._maybe_near_miss(self._cand(70), pd.Timestamp("2026-10-13 06:00", tz="UTC"))
-        self.assertEqual(app.notify_q.qsize(), 0)
-
-    def test_paper_mode_is_silent(self):
-        c, app = mkapp(near_miss__score=80)
-        app.cfg.set("mode", "paper")
-        app._maybe_near_miss(self._cand(95), pd.Timestamp("2026-10-13 06:00", tz="UTC"))
-        self.assertEqual(app.notify_q.qsize(), 0)
+from tests.helpers import cfg, series_from_closes
 
 
 # ------------------------------------------------------------------ news calendar
