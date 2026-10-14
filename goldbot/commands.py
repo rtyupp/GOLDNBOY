@@ -95,13 +95,15 @@ def build_handlers(app) -> dict:
 
     def stats(args):
         s = app.journal.stats()
+        prot = app.protection_status()
         if not s.get("closed"):
-            return f"عدد الإشارات: {s['total']}   مفتوحة: {s['open']}   مغلقة: 0 (لا توجد نتائج بعد)"
+            return f"عدد الإشارات: {s['total']}   مفتوحة: {s['open']}   مغلقة: 0 (لا توجد نتائج بعد)\nحماية رأس المال: {prot}"
         pf = "∞" if s["profit_factor"] == float("inf") else f"{s['profit_factor']:.2f}"
         out = [f"الإشارات {s['total']}   مفتوحة {s['open']}   مغلقة {s['closed']}",
                f"نسبة الربح {s['win_rate']:.1%}   رابحة/خاسرة {s['wins']}/{s['losses']}",
                f"متوسط R {s['avg_r']:.2f}   معامل الربح {pf}   إجمالي R {s['total_r']:.2f}",
-               f"الهدف الأول {s['tp1']}   الهدف الثاني {s['tp2']}   وقف الخسارة {s['sl']}", "", "حسب الاستراتيجية:"]
+               f"الهدف الأول {s['tp1']}   الهدف الثاني {s['tp2']}   وقف الخسارة {s['sl']}",
+               f"حماية رأس المال: {prot}", "", "حسب الاستراتيجية:"]
         out += [f"- {T.STRATEGY.get(k, k)}: عدد {v['count']}  متوسط R {v['mean']}" for k, v in s.get("by_strategy", {}).items()]
         out += ["", "حسب الجلسة:"] + [f"- {T.SESSION.get(k, k)}: عدد {v['count']}  متوسط R {v['mean']}" for k, v in s.get("by_session", {}).items()]
         return "\n".join(out)

@@ -89,3 +89,14 @@ class RiskEngine:
         pts += 2 if (ctx.spread or 0) > 0.08 * plan.risk else 0
         pts += 1 if ctx.mtf["bias"] in ("conflict", "neutral") else 0
         return "High" if pts >= 3 else ("Medium" if pts >= 1 else "Low")
+
+
+def position_size(plan: RiskPlan, balance: float, risk_pct: float, contract_oz: float = 100.0) -> Optional[dict]:
+    """حجم المركز المقترح من الرصيد ونسبة المخاطرة. لا يقرر شيئًا: عرض فقط.
+    للذهب: لوت قياسي = 100 أونصة، وحركة دولار واحد في السعر = 100$ لكل لوت.
+    يرجع None إذا كان الرصيد/النسبة/المخاطرة صفرًا أو غير صالحة."""
+    if balance is None or risk_pct is None or balance <= 0 or risk_pct <= 0 or plan.risk <= 0:
+        return None
+    risk_cash = balance * risk_pct / 100.0
+    oz = risk_cash / plan.risk
+    return {"risk_cash": risk_cash, "oz": oz, "lots": oz / contract_oz}

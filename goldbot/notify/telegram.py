@@ -150,13 +150,15 @@ class Telegram:
         return ok
 
 
-def format_signal(plan, strategy: str, session: str, confidence: float, prob_text: str, reason: str) -> str:
+def format_signal(plan, strategy: str, session: str, confidence: float, prob_text: str, reason: str,
+                  size_line: str = "") -> str:
     emoji = "🟢" if plan.direction == "BUY" else "🔴"
     return (f"الذهب XAU/USD\n\n{emoji} {T.DIR[plan.direction]}\n\n"
             f"الدخول:\n{plan.entry:.2f}\n\nوقف الخسارة (SL):\n{plan.sl:.2f}\n\n"
             f"الهدف الأول (TP1):\n{plan.tp1:.2f}\n\nالهدف الثاني (TP2):\n{plan.tp2:.2f}\n\n"
             f"العائد/المخاطرة:\n1:{plan.rr2:.1f}  (الهدف الأول 1:{plan.rr1:.1f})\n\n"
-            f"درجة تقاطع الأدلة:\n{confidence:.0f}/100\n\nالاحتمال التاريخي:\n{prob_text}\n\n"
+            + (f"حجم المركز المقترح:\n{size_line}\n\n" if size_line else "")
+            + f"درجة تقاطع الأدلة:\n{confidence:.0f}/100\n\nالاحتمال التاريخي:\n{prob_text}\n\n"
             f"الاستراتيجية:\n{T.STRATEGY.get(strategy, strategy)}\n\nالجلسة:\n{T.SESSION.get(session, session)}\n\nالسبب:\n{reason}\n\n"
             "⚠️ ليست نصيحة مالية. درجة تقاطع الأدلة ليست احتمال ربح؛ الاحتمال الحقيقي هو الاحتمال التاريخي فقط.\n\nby: QUOP9")
 

@@ -131,6 +131,21 @@ risk:
 signals:
   cooldown_min: 15              # كان 30
   max_open_trades: 1
+  max_daily_loss_r: 0           # حماية رأس المال: 0 = معطّل. أوقف الإشارات الجديدة لبقية اليوم إذا بلغت خسارة اليوم المحققة -X (R)
+  max_consecutive_losses: 0     # حماية رأس المال: 0 = معطّل. أوقف الإشارات بعد N خسارة متتالية (يُصفَّر بأول صفقة رابحة)
+
+risk:
+  sl_buffer_atr: 0.25
+  min_sl_atr: 0.8
+  max_sl_atr: 3.0
+  rr1: 1.2
+  rr2: 2.4
+  min_rr2: 1.8
+  max_spread: 0.8           # دولار
+  max_spread_to_risk: 0.12
+  tp_buffer_atr: 0.1
+  account_balance: 0        # رصيد الحساب بالدولار لعرض «حجم المركز المقترح» في الإشارة؛ 0 = لا يُعرض
+  risk_per_trade_pct: 1.0   # نسبة المخاطرة لكل صفقة من الرصيد (لحساب حجم المركز)
 
 tracking:
   tp1_partial_pct: 0.5      # نسبة الإغلاق عند الهدف الأول (لحساب R)
