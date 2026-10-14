@@ -60,6 +60,7 @@ data:
   history_retry_sec: 120    # يتضاعف عند تكرار الفشل (حتى 15 دقيقة)
   cache_dir: data/cache
   max_candle_gap_min: 5     # آخر شمعة 1m يجب أن تكون أحدث من هذا وإلا لا صفقة
+  max_history_staleness_min: 180   # حارس التاريخ العميق: آخر شمعة 1m أقدم من هذا (خارج العطلة) = التاريخ متوقف (0 = معطّل)
 
 analysis:
   use_ta_library: true      # مكتبة ta؛ إن لم تعمل يستخدم البوت صيغًا داخلية مكافئة

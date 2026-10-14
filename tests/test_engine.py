@@ -93,7 +93,7 @@ class TestTracker(unittest.TestCase):
         self.assertEqual(s["by_hour"][14]["count"], 1)
 
     def test_expiry(self):
-        sid = add(self.j, ts="2026-05-30T10:00:00+00:00")
+        sid = add(self.j, ts="2026-05-28T10:00:00+00:00")     # الخميس (يوم تداول)
         self.tr.check_expiry(pd.Timestamp("2026-06-01T12:00Z"), 2652.0, 2652.3)
         self.assertEqual(self.j.get(sid)["result"], "EXPIRED")
 

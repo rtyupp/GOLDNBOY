@@ -175,6 +175,19 @@ class BotApp:
             return False, f"CANDLE_GAP({gap:.0f}min)"
         return True, "OK"
 
+    def deep_history_status(self, as_of: pd.Timestamp) -> tuple:
+        """حالة البيانات التاريخية العميقة: قد تكون «سليمة» (العدد كافٍ) لكن آخر شمعة قديمة جدًا
+        (مزوّد متوقف عن إرجاع بيانات جديدة). هذا يخفي نفسه داخل INSUFFICIENT_HISTORY لأن العدد لا يزال كافيًا،
+        فنكشفه هنا لتقرير الصحة والسبب. يُعيد (سليمة؟، سبب، عمر آخر شمعة بالدقائق أو None)."""
+        lc = self.md.last_base_close()
+        if lc is None:
+            return False, "NO_CANDLES", None
+        age_min = (as_of - lc).total_seconds() / 60.0
+        max_age = float(self.cfg.get("data.max_history_staleness_min", 0) or 0)
+        if max_age > 0 and age_min > max_age and not resources.market_closed(as_of):
+            return False, f"HISTORY_STALE({age_min:.0f}min>{max_age:.0f})", age_min
+        return True, "OK", age_min
+
     async def cycle(self):
         now = pd.Timestamp.now(tz="UTC")
         self.builder.flush(int(now.timestamp() * 1000))
@@ -355,6 +368,24 @@ class BotApp:
                 log.exception("فشل الملخص الدوري")
 
     # ------------------------------------------------------------------ health endpoint (Render/Fly/etc.)
+    def health_snapshot(self) -> dict:
+        """الحالة الفعلية للنظام: ok=False عندما تكون البيانات اللحظية قديمة أو التاريخ العميق متوقفًا.
+        لا يكذب أبدًا بـok=True: يبقى السوق المغلق استثناءً صريحًا (لا عطل)."""
+        now = pd.Timestamp.now(tz="UTC")
+        fresh, why = self.ticks.check_fresh()
+        deep_ok, deep_why, deep_age = self.deep_history_status(now)
+        market_closed = resources.market_closed(now)
+        if market_closed:
+            ok = True                       # إغلاق السوق ليس عطلًا
+        else:
+            ok = bool(fresh and deep_ok)
+        reasons = [r for r in (why if not fresh else None, deep_why if not deep_ok else None) if r]
+        return {"ok": ok, "ws": self.ticks.connected, "data_fresh": fresh, "data": why,
+                "deep_history_ok": deep_ok, "deep_history": deep_why,
+                "deep_history_age_min": None if deep_age is None else round(deep_age, 1),
+                "market_closed": market_closed, "reasons": reasons,
+                "tick_age": self.ticks.age_sec(), "uptime_h": round((time.time() - self.started) / 3600, 2)}
+
     async def health_server(self):
         port = int(env("PORT", "0") or 0)
         if not port:
@@ -363,10 +394,12 @@ class BotApp:
         async def handle(reader, writer):
             try:
                 await asyncio.wait_for(reader.readline(), 5)
-                ok, why = self.ticks.check_fresh()
-                body = json.dumps({"ok": True, "ws": self.ticks.connected, "data_fresh": ok, "data": why,
-                                   "tick_age": self.ticks.age_sec(), "uptime_h": round((time.time() - self.started) / 3600, 2)}).encode()
-                writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %d\r\nConnection: close\r\n\r\n" % len(body) + body)
+                snap = self.health_snapshot()
+                body = json.dumps(snap).encode()
+                # Always HTTP 200: an orchestrator (Render) must not restart the bot just because
+                # it is honestly reporting stale data / a stopped history provider. The `ok` field
+                # is the honest signal, not the status code.
+                writer.write((f"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {len(body)}\r\nConnection: close\r\n\r\n").encode() + body)
                 await writer.drain()
             except Exception:
                 pass

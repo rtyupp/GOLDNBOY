@@ -107,6 +107,21 @@
   would freeze the analysis forever during a real feed outage, hiding it from cycles and `/why`.
   `_history_ready` is set only on a successful load. Regression:
   `tests/test_review_regressions.py::TestStartupHistoryGate`.
+- Honest `/health`: the endpoint used to hard-code `"ok": true`, so a stopped history provider or a
+  stale tick feed still reported healthy. `BotApp.health_snapshot()` now returns `ok=false` when the
+  live tick is stale/disconnected or when deep history is stale (`HISTORY_STALE`, see
+  `deep_history_status` + `data.max_history_staleness_min`, default 180 min, skipped while the market
+  is closed). A closed market is explicitly `ok=true` (not an outage). The HTTP status stays 200 on
+  purpose — returning 503 would make Render restart a bot that is merely honestly reporting an
+  outage. `/health` (command + button) prints the same snapshot.
+- Deep-history staleness guard: `deep_history_status` flags `HISTORY_STALE` when the newest 1m bar is
+  older than `data.max_history_staleness_min` outside market hours. A provider that stops returning
+  new bars keeps the row count above `min_history_rows`, so it otherwise hides inside
+  `INSUFFICIENT_HISTORY`. Surfaced in `/status` and the health snapshot.
+- Weekend gap in trade expiry: `TradeTracker.check_expiry` now ages trades by **trading minutes**
+  (`_trading_minutes`), excluding the weekly close (Fri 21:00 → Sun 22:00 UTC). Before, a trade
+  opened before the weekend "expired" on Sunday merely because the wall clock advanced while the
+  market never moved. Regression: `tests/test_health_and_expiry.py`.
 - SIGTERM must terminate the process. The `/health` server used to `await srv.serve_forever()`
   with no stop check, so `asyncio.gather(*tasks)` in `run()` never returned and Render SIGKILLed
   the container after every deploy (no clean stop, no final journal push). `BotApp` now stores
