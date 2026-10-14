@@ -15,7 +15,7 @@ strategies:
   require_htf_alignment: false   # السكالب لا يشترط موافقة 4H/1H: تخفّ إلى وزن فقط (صفقات قصيرة)
 
 confluence:
-  min_score: 60.0   # أقل من الافتراضي (68.4): سكالب على 15m يحتاج حساسية أعلى
+  min_score: 45.0   # أقل من الافتراضي (50): سكالب على 15m يحتاج حساسية أعلى
   ignore_htf_conflict: true   # لا نمنع الإشارة لمجرد تعارض 4H/1H
 
 filters:

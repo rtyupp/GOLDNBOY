@@ -146,8 +146,14 @@ class TestRegimeGuard(unittest.TestCase):
         return NS(spread=spread, mtf={"bias": bias}, tf={"15m": s15, "1H": s1h}, regime=regime,
                   session={"label": "London"})
 
-    def test_no_block_by_default(self):
+    def test_default_blocks_transition(self):
+        # الافتراضي الآن يحجب النظام الانتقالي (أكثر الأنظمة خسارةً على بيانات 28 يومًا).
         c = cfg()
+        reasons = no_trade.global_gates(c, self._ctx("TRANSITION"), True, "OK")
+        self.assertTrue(any(r.startswith("REGIME_BLOCK") for r in reasons))
+
+    def test_no_block_when_disabled(self):
+        c = cfg(filters__block_regimes=[])
         self.assertEqual(no_trade.global_gates(c, self._ctx("TRANSITION"), True, "OK"), [])
 
     def test_block_configured_regime(self):
