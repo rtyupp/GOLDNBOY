@@ -34,13 +34,30 @@ def global_gates(cfg, ctx, data_ok: bool, data_reason: str) -> List[str]:
     return r
 
 
-def setup_gates(cfg, best, confluence_score: float, prob) -> List[str]:
+def adaptive_min_score(cfg, journal) -> float:
+    """عتبة التقاطع التكيّفية: عند خسارة الأداء الأخير (متوسط R لآخر n صفقة < 0) نرفع العتبة قليلًا
+    بدل إيقاف التداول كليًا، فتصمد فقط الإعدادات عالية الجودة. معطّلة افتراضيًا (0 = لا تعديل)."""
+    step = float(cfg.get("confluence.adaptive_step", 0) or 0)
+    base = float(cfg.get("confluence.min_score", 70))
+    if step <= 0 or journal is None:
+        return base
+    n = int(cfg.get("confluence.adaptive_lookback", 20) or 20)
+    min_n = int(cfg.get("confluence.adaptive_min_samples", 10) or 10)
+    avg, count = journal.recent_avg_r(n)
+    if count < min_n or avg >= 0:
+        return base
+    bump = min(step, float(cfg.get("confluence.adaptive_max_bump", step) or step))
+    return base + bump
+
+
+def setup_gates(cfg, best, confluence_score: float, prob, journal=None) -> List[str]:
     r: List[str] = []
     if best is None or best.signal == "NONE":
         r.append("NO_SETUP")
         return r
-    if confluence_score < cfg.get("confluence.min_score", 70):
-        r.append(f"LOW_CONFLUENCE({confluence_score:.0f}<{cfg.get('confluence.min_score', 70)})")
+    min_score = adaptive_min_score(cfg, journal)
+    if confluence_score < min_score:
+        r.append(f"LOW_CONFLUENCE({confluence_score:.0f}<{min_score:.1f})")
     if prob is not None:
         if prob.sufficient:
             if prob.win_rate < cfg.get("probability.min_win_rate", 0.50) or prob.avg_r < cfg.get("probability.min_avg_r", 0.0):

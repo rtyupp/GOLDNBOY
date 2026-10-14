@@ -81,6 +81,16 @@ def cmd_backtest(cfg, a):
     print("ملاحظة: نتائج الـ Backtest تقدير للماضي وليست ضمانًا للمستقبل. السبريد والانزلاق مفترضان بقيم ثابتة من الإعدادات.")
 
 
+def _news_event_times(cfg):
+    """أوقات الأحداث المؤثرة من كاش التقويم المحلي (بلا شبكة) لتوسيع السبريد حول الأخبار في الـ Backtest.
+    إن كان الملف غير موجود أو التقويم معطّلًا نُعيد قائمة فارغة (السبريد يبقى ثابتًا)."""
+    try:
+        from goldbot.providers.news import NewsCalendar
+        return [e.ts for e in NewsCalendar(cfg).events]
+    except Exception:
+        return []
+
+
 def cmd_compare(cfg, a):
     from goldbot.backtest.compare import compare, fmt, save
     days = a.days or int(cfg.get("backtest.history_days", 60))
@@ -88,7 +98,10 @@ def cmd_compare(cfg, a):
     print(f"البيانات التاريخية: {len(base)} شمعة 1m  من {base.index[0]} إلى {base.index[-1]}")
     tf = "5m" if a.tf == "all" else a.tf
     step = a.step or int(cfg.get(f"backtest.steps.{tf}", 1))
-    res = compare(base, cfg, tf, step, progress=lambda k, n: print(f"  {k}/{n}", flush=True))
+    news = _news_event_times(cfg)
+    if news:
+        print(f"تقويم الأخبار: {len(news)} حدث مؤثر (لنافذة السبريد إن كان مضاعف الأخبار مفعّلًا)")
+    res = compare(base, cfg, tf, step, progress=lambda k, n: print(f"  {k}/{n}", flush=True), news_events=news)
     print(fmt(res))
     print("تم حفظ التقرير:", save(res, cfg.get("backtest.report_dir", "reports")))
     print("ملاحظة: نتائج الماضي تقدير وليست ضمانًا. لا شيء هنا يضمن ربحًا.")

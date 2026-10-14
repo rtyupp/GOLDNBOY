@@ -62,6 +62,16 @@
   to fold (folds are then not enforced). Reports include `walk_forward_folds` next to `walk_forward_split`.
 - `/stats` breaks closed trades down by strategy, session, market regime (1H trend, read from the
   stored fingerprint) and UTC hour, so a weak regime/hour is visible without a backtest run.
+- Realistic spread: `_spread_for` widens the assumed spread by session (`backtest.spread_session_mult`,
+  e.g. `{"Off-hours": 3.0}`) and inside a news window (`backtest.spread_news_mult` ×
+  `backtest.news_window_min`). `python -m goldbot compare` reads event times from the local calendar
+  cache (no network) and passes them in. All multipliers default to none/0, so the spread stays flat
+  as before until enabled. Costs block in the report records the base spread + multipliers.
+- Adaptive confluence threshold (`confluence.adaptive_*`, off by default): when the recent average R
+  over the last `adaptive_lookback` closed trades is negative (and at least `adaptive_min_samples`
+  exist), `no_trade.adaptive_min_score` raises the effective `min_score` by `adaptive_step` (capped by
+  `adaptive_max_bump`), so only high-quality setups pass instead of a hard trading halt. The
+  `LOW_CONFLUENCE(...)` reason shows the raised threshold. Regression: `tests/test_adaptive_and_spread.py`.
 
 ## Add-ons (guardrails & persistence)
 - News filter: `goldbot/providers/news.py` (free ForexFactory weekly JSON, no key). Wired into

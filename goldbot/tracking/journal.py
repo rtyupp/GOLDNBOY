@@ -126,6 +126,25 @@ class Journal:
                 continue
         return total
 
+    def recent_avg_r(self, n: int):
+        """متوسط R لآخر n صفقة مغلقة (بترتيب الإغلاق) وعددها. يُستخدم لعتبة التقاطع التكيّفية.
+        العينة الصغيرة جدًا تُعيد (0.0, count) حتى لا تُرفع العتبة على أساس عيّنة ضعيفة الدلالة."""
+        with self.lock:
+            rows = self.db.execute(
+                "SELECT r, closed_ts FROM signals WHERE status='CLOSED' AND r IS NOT NULL AND closed_ts IS NOT NULL"
+            ).fetchall()
+        items = []
+        for r in rows:
+            try:
+                items.append((pd.Timestamp(r["closed_ts"]), float(r["r"])))
+            except (ValueError, TypeError):
+                continue
+        items.sort(key=lambda x: x[0])
+        tail = items[-n:]
+        if not tail:
+            return 0.0, 0
+        return sum(v for _, v in tail) / len(tail), len(tail)
+
     def consecutive_losses(self) -> int:
         """عدد الخسائر المتتالية في نهاية سلسلة الصفقات المغلقة (تُصفَّر بأول صفقة رابحة عند العد من الأحدث)."""
         with self.lock:
