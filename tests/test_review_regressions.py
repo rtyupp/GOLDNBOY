@@ -291,7 +291,7 @@ class TestScalpHtfRelaxation(unittest.TestCase):
         return SimpleNamespace(mtf={"bias": "conflict", "strength": "WEAK"}, spread=0.3,
                                tf={"15m": SimpleNamespace(last={"er": 0.5}, trend="RANGE"),
                                    "1H": SimpleNamespace(trend="RANGE")},
-                               session={"label": "Asia"})
+                               regime="BULLISH", session={"label": "Asia"})
 
     def test_default_blocks_htf_conflict(self):
         from goldbot.engine.no_trade import global_gates
@@ -334,6 +334,24 @@ class TestWhyCommand(unittest.TestCase):
         app.last_cand = cand
         out = build_handlers(app)["/why"]([])
         self.assertIn("أُرسلت", out)
+
+
+class TestStrategySelectionDefaults(unittest.TestCase):
+    """القيم الافتراضية لعتبة التقاطع وحجب الأنظمة مثبّتة على النتيجة المُتحقَّق منها على بيانات حقيقية:
+    على 28 يومًا لـXAUUSD كان conf>=68.4 بلا حجب يختار صفقات خاسرة فقط (5m: n=11, avgR=-0.52, -5.7R)،
+    بينما conf>=50 مع حجب النظام الانتقالي يجعل 5m موجبًا (n=17, avgR=+0.11) و15m موجبًا (n=6, avgR=+1.01)."""
+
+    def test_default_threshold_and_regime_block(self):
+        from goldbot.config import load_config
+        c = load_config("config/config.yaml")
+        self.assertLessEqual(c.get("confluence.min_score"), 50.0)
+        self.assertIn("TRANSITION", c.get("filters.block_regimes", []))
+
+    def test_scalp_is_more_sensitive_than_default(self):
+        from goldbot.config import load_config
+        d = load_config("config/config.yaml")
+        s = load_config("config/config.yaml", profile="scalp")
+        self.assertLess(s.get("confluence.min_score"), d.get("confluence.min_score"))
 
 
 class TestStrategyIsolation(unittest.TestCase):
