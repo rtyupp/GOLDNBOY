@@ -21,7 +21,7 @@ def build_handlers(app) -> dict:
     def help_(args):
         return ("استخدم الأزرار بالأسفل، أو الأوامر:\n/start  القائمة والترحيب\n/price  السعر اللحظي\n/analysis  التحليل الحالي\n"
                 "/signal  آخر إعداد تم تقييمه\n/market  نظرة متعددة الفريمات\n/stats  الإحصائيات\n/history  آخر الإشارات\n"
-                "/last  آخر إشارة\n/why  لماذا لا توجد توصية الآن\n/news  الأخبار الاقتصادية المؤثرة\n/session  الجلسة الحالية\n/status  حالة النظام\n/train  إعادة بناء السجل التاريخي\n/id  رقم حسابك\nأو اكتب أي سؤال عادي عن السوق أو الإشارات")
+                "/last  آخر إشارة\n/why  لماذا لا توجد توصية الآن\n/news  الأخبار الاقتصادية المؤثرة\n/health  فحص الصحة\n/session  الجلسة الحالية\n/status  حالة النظام\n/train  إعادة بناء السجل التاريخي\n/id  رقم حسابك\nأو اكتب أي سؤال عادي عن السوق أو الإشارات")
 
     def status(args):
         t = app.ticks
@@ -38,12 +38,16 @@ def build_handlers(app) -> dict:
             prog = getattr(app.history_provider, "progress", None)
             if prog and prog[1]:
                 hist += f" — تنزيل Dukascopy: {prog[0]}/{prog[1]} ساعة"
+        deep_ok, deep_why, deep_age = app.deep_history_status(pd.Timestamp.now(tz="UTC"))
+        deep = "سليمة" if deep_ok else f"تحذير: {T.reason_ar(deep_why)}"
+        if deep_age is not None:
+            deep += f" (عمر آخر شمعة {deep_age:.0f} دقيقة)"
         return "\n".join([
             "حالة النظام",
             f"الاتصال اللحظي: {'متصل ✅' if t.connected else 'منقطع ❌'}   عدد التحديثات: {t.count}",
             f"السعر اللحظي: {'حديث ✅' if fresh else 'غير صالح ❌ (' + T.reason_ar(why) + ')'}   عمر آخر تحديث: {_age(t.age_sec())}",
             f"الشموع: {app.md.summary()}",
-            f"البيانات التاريخية: {hist}",
+            f"البيانات التاريخية: {hist}   |   التاريخ العميق: {deep}",
             f"المساعد: {app.assist.status_text()}",
             f"السوق: {'مغلق (عطلة نهاية الأسبوع)' if resources.market_closed(pd.Timestamp.now(tz='UTC')) else 'مفتوح'}   الذاكرة: {_mem_txt()}",
             f"الوضع: {'حقيقي' if app.cfg.get('mode') == 'live' else 'تجريبي (بدون إرسال)'}   الاستراتيجيات: {len(app.pipeline.strategies)}",
@@ -213,6 +217,17 @@ def build_handlers(app) -> dict:
         lines.append(f"الحالة: {nl.status_text()}")
         return "\n".join(lines)
 
+    def health(args):
+        snap = app.health_snapshot()
+        lines = [f"فحص الصحة: {'سليم ✅' if snap['ok'] else 'غير سليم ❌'}",
+                 f"الاتصال اللحظي: {'متصل' if snap['ws'] else 'منقطع'}   البيانات اللحظية: {'حديثة' if snap['data_fresh'] else 'قديمة (' + T.reason_ar(snap['data']) + ')'}   عمر التحديث: {_age(snap['tick_age'])}",
+                 f"التاريخ العميق: {'سليم' if snap['deep_history_ok'] else T.reason_ar(snap['deep_history'])}" + ("" if snap['deep_history_age_min'] is None else f"   عمر آخر شمعة: {snap['deep_history_age_min']:.0f} دقيقة"),
+                 f"السوق: {'مغلق (عطلة)' if snap['market_closed'] else 'مفتوح'}   مدة التشغيل: {snap['uptime_h']:.1f} ساعة"]
+        if snap["reasons"]:
+            lines.append("الأسباب: " + T.reasons_ar(snap["reasons"]))
+        lines.append("ملاحظة: حقل ok في نقطة /health صادق (يتحول إلى false عند البيانات القديمة أو توقف التاريخ)، لكن رمز HTTP يبقى 200 حتى لا تُعيد Render تشغيل البوت عند إغلاق السوق.")
+        return "\n".join(lines)
+
     return {"/train": train, "/help": help_, "/status": status, "/price": price, "/analysis": analysis, "/signal": signal,
             "/stats": stats, "/history": history, "/last": last, "/market": market, "/session": session, "/why": why,
-            "/news": news}
+            "/news": news, "/health": health}

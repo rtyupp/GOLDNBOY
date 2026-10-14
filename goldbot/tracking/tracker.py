@@ -9,6 +9,32 @@ from goldbot.models import Tick
 log = logging.getLogger("tracker")
 
 
+def _trading_minutes(start: pd.Timestamp, end: pd.Timestamp) -> float:
+    """دقائق التداول بين لحظتين باستثناء عطلة نهاية الأسبوع (الجمعة 21:00 UTC → الأحد 22:00 UTC).
+    وإلا فإن صفقة صدرت قبل العطلة تنتهي «زمنيًا» يوم الأحد لمجرد أن عقارب الساعة دارت، مع أن السوق لم يتحرك إطلاقًا."""
+    if end <= start:
+        return 0.0
+    total = (end - start).total_seconds() / 60.0
+    cur = start.normalize()
+    last = end.normalize()
+    while cur <= last:
+        wd = cur.weekday()
+        if wd == 5:
+            lo, hi = cur, cur + pd.Timedelta(days=1)
+        elif wd == 6:
+            lo, hi = cur, cur + pd.Timedelta(hours=22)
+        elif wd == 4:
+            lo, hi = cur + pd.Timedelta(hours=21), cur + pd.Timedelta(days=1)
+        else:
+            cur += pd.Timedelta(days=1)
+            continue
+        lo, hi = max(lo, start), min(hi, end)
+        if hi > lo:
+            total -= (hi - lo).total_seconds() / 60.0
+        cur += pd.Timedelta(days=1)
+    return max(0.0, total)
+
+
 class TradeTracker:
     def __init__(self, journal, notify: Callable[[str], None], cfg, clock: Callable[[], float] = time.time):
         self.j = journal
@@ -78,7 +104,9 @@ class TradeTracker:
 
     def check_expiry(self, now: pd.Timestamp, bid: float, ask: float):
         for t in self.j.open_trades():
-            age = (now - pd.Timestamp(t["timestamp"])).total_seconds() / 60.0
+            started = pd.Timestamp(t["timestamp"])
+            # العطلة الأسبوعية لا تُحتسب عمرًا: الصفقة لا «تنتهي» لأن السوق كان مغلقًا
+            age = _trading_minutes(started, now)
             scalp = self.scalp_minutes > 0 and age >= self.scalp_minutes
             if age < self.max_minutes and not scalp:
                 continue
