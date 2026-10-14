@@ -9,7 +9,7 @@
 Results are an estimate of the past, not a guarantee for the future.
 """
 from __future__ import annotations
-import json, logging, os
+import json, logging, os, re
 from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
@@ -226,7 +226,11 @@ def save_report(result: dict, out_dir: str, tag: str = "") -> str:
         json.dump(summary, f, indent=2, default=str)
     for n, df in result["books"].items():
         if not df.empty:
-            df.to_csv(os.path.join(out_dir, f"trades_{tf}_{n.replace(' ', '_')}{tag}.csv"), index=False)
+            # Strategy labels can contain path separators (e.g. "Liquidity Grab (PDH/PDL)"); an
+            # unsanitized label makes pandas try to write into a non-existent subdirectory and
+            # crash the whole report — which aborts the bootstrap subprocess with exit code 1.
+            safe = re.sub(r"[^\w.-]+", "_", str(n)).strip("_")
+            df.to_csv(os.path.join(out_dir, f"trades_{tf}_{safe}{tag}.csv"), index=False)
     return path
 
 
