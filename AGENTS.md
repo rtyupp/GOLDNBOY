@@ -50,8 +50,6 @@
 - News filter: `goldbot/providers/news.py` (free ForexFactory weekly JSON, no key). Wired into
   `Pipeline(cfg, journal, news=...)`; blocks via `NEWS_BLACKOUT(...)` before strategies run.
   Fail-open: unreachable calendar blocks nothing. Command `/news`. Config `news.*`.
-- Near-miss alert: `BotApp._maybe_near_miss` in `app.py` (only when `mode=live`). Fires when the
-  best setup score >= `near_miss.score` but the cycle was blocked; per-setup cooldown.
 - Journal persistence: `goldbot/persist.py` syncs `journal.sqlite` to a PRIVATE gist using
   `GITHUB_TOKEN`; restores at startup only when the local journal has zero rows. Config
   `persistence.*`. Fail-open. Verified by `tests/test_addons.py`.

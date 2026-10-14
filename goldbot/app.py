@@ -42,7 +42,6 @@ class BotApp:
         self.tg = tg
         self.news = news
         self.persist = persist or JournalSync(cfg, journal=self.journal)
-        self._near_miss_last: dict = {}
         self.history_provider = history_provider
         self.live_factory = live_factory
         self.notify_q: asyncio.Queue = asyncio.Queue()
@@ -196,7 +195,6 @@ class BotApp:
         elif not cand.log.final.endswith("SENT"):
             cand.log.final = "NO TRADE"
             cand.log.reasons = cand.reasons
-            self._maybe_near_miss(cand, as_of)
         if closed:                                   # لا نملأ السجل كل دقيقة أثناء العطلة: مرة كل 30 دقيقة
             last = getattr(self, "_closed_log_ts", None)
             if last is None or (now - last).total_seconds() >= 1800:
@@ -205,30 +203,6 @@ class BotApp:
         else:
             self.recorder.record(cand.log)
         return cand
-
-    def _maybe_near_miss(self, cand, as_of):
-        """إعداد قوي (درجة عالية) مُنع بسبب بوابة — نبلّغ عنه حتى لا يكون الصمت غامضًا. بتهدئة زمنية لكل إعداد/اتجاه."""
-        if self.tg is None or self.cfg.get("mode") == "paper" or not self.cfg.get("near_miss.enabled", True):
-            return
-        if cand.ctx is None or not cand.results:
-            return
-        thr = float(self.cfg.get("near_miss.score", 80))
-        cooldown = float(self.cfg.get("near_miss.cooldown_min", 60))
-        best = max(cand.results, key=lambda r: r.score)
-        if best.score < thr:
-            return
-        key = (best.name, best.setup_tags.get("direction"))
-        last = self._near_miss_last.get(key)
-        if last is not None and (as_of - last).total_seconds() / 60.0 < cooldown:
-            return
-        self._near_miss_last[key] = as_of
-        b = best
-        gate = T.reasons_ar(cand.reasons) if cand.reasons else T.strategy_reason_ar(b.reason)
-        self.notify_q.put_nowait(
-            f"👀 فرصة قاربت — لم تتحقق شروط الدخول بعد\n"
-            f"الإعداد: {T.STRATEGY.get(b.name, b.name)}   الاتجاه: {T.DIR.get(b.signal, 'لا إشارة')}   الدرجة: {b.score:.0f}\n"
-            f"منعه: {gate}\n"
-            f"(ليست توصية — تنبيه فقط لاقتراب إعداد قوي)")
 
     def _apply_limits(self, cand, as_of):
         n_open = len(self.journal.open_trades())
