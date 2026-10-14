@@ -44,16 +44,16 @@ def verdict(rep: dict) -> str:
 
 
 def compare(base: pd.DataFrame, cfg: Cfg, tf: str = "5m", step: int = 1, max_evals: Optional[int] = None,
-            warmup_days: int = 12, progress=None) -> dict:
+            warmup_days: int = 12, progress=None, news_events: Optional[list] = None) -> dict:
     sp = float(cfg.get("backtest.spread", 0.3))
     se = float(cfg.get("backtest.slippage_entry", 0.1))
     ss = float(cfg.get("backtest.slippage_stop", 0.15))
     real = _cfg(cfg, sp, se, ss)
     ideal = _cfg(cfg, 0.0, 0.0, 0.0)
     runs = {
-        "baseline_real": run_backtest(base, real, tf, step, max_evals, warmup_days, only=BASELINE_KEYS, progress=progress),
-        "extended_real": run_backtest(base, real, tf, step, max_evals, warmup_days, only=BASELINE_KEYS + NEW_KEYS, progress=progress),
-        "advanced_real": run_backtest(base, real, tf, step, max_evals, warmup_days, only=BASELINE_KEYS + NEW_KEYS + ADVANCED_KEYS, progress=progress),
+        "baseline_real": run_backtest(base, real, tf, step, max_evals, warmup_days, only=BASELINE_KEYS, progress=progress, news_events=news_events),
+        "extended_real": run_backtest(base, real, tf, step, max_evals, warmup_days, only=BASELINE_KEYS + NEW_KEYS, progress=progress, news_events=news_events),
+        "advanced_real": run_backtest(base, real, tf, step, max_evals, warmup_days, only=BASELINE_KEYS + NEW_KEYS + ADVANCED_KEYS, progress=progress, news_events=news_events),
         "extended_ideal": run_backtest(base, ideal, tf, step, max_evals, warmup_days, only=BASELINE_KEYS + NEW_KEYS + ADVANCED_KEYS, progress=progress),
     }
     labels = {c.key: c.label for c in ALL}

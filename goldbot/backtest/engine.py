@@ -115,9 +115,28 @@ def walk_forward_folds(df: pd.DataFrame, n_folds: int = 4, min_per_fold: int = 5
             "avg_r_folds": round(avg, 3)}
 
 
+def _spread_for(as_of: pd.Timestamp, base: float, cfg, sessions, news_events=None) -> float:
+    """السبريد الواقعي يتغيّر: أوسع خارج الجلسات وفي نافذة الأخبار. هذا يُصلح افتراض السبريد الثابت.
+    معطّل افتراضيًا (لا مضاعفات) فيبقى السلوك القديم حتى يفعّله المستخدم صراحة."""
+    from goldbot.analysis.sessions import session_label
+    mult = 1.0
+    table = cfg.get("backtest.spread_session_mult", {}) or {}
+    if table:
+        mult *= float(table.get(session_label(as_of, sessions), 1.0) or 1.0)
+    news_mult = float(cfg.get("backtest.spread_news_mult", 0) or 0)
+    if news_mult > 0 and news_events:
+        win = pd.Timedelta(minutes=float(cfg.get("backtest.news_window_min", 30) or 30))
+        for ev in news_events:
+            if abs(as_of - ev) <= win:
+                mult *= news_mult
+                break
+    return base * mult
+
+
 def run_backtest(base: pd.DataFrame, cfg, eval_tf: str = "5m", step: int = 1, max_evals: Optional[int] = None,
-                 warmup_days: int = 12, only: Optional[List[str]] = None, progress=None) -> dict:
-    spread = float(cfg.get("backtest.spread", 0.3))
+                 warmup_days: int = 12, only: Optional[List[str]] = None, progress=None,
+                 news_events: Optional[List[pd.Timestamp]] = None) -> dict:
+    base_spread = float(cfg.get("backtest.spread", 0.3))
     slip_entry = float(cfg.get("backtest.slippage_entry", 0.0))
     slip_stop = float(cfg.get("backtest.slippage_stop", 0.0))
     partial = float(cfg.get("tracking.tp1_partial_pct", 0.5))
@@ -148,6 +167,7 @@ def run_backtest(base: pd.DataFrame, cfg, eval_tf: str = "5m", step: int = 1, ma
             continue
         frames = {tf: closed_only(ind[tf], as_of) for tf in ind}
         px = float(frames["1m"]["close"].iloc[-1]) if len(frames["1m"]) else float(row["close"])
+        spread = _spread_for(as_of, base_spread, cfg, sessions, news_events)
         cand = pipe.prepare(frames, px - spread / 2, px + spread / 2, as_of, True, "OK", use_probability=False)
         if progress and k % 500 == 0:
             progress(k, total)
@@ -166,7 +186,8 @@ def run_backtest(base: pd.DataFrame, cfg, eval_tf: str = "5m", step: int = 1, ma
             _record(books[r.name], r, ctx, confs[d][0], as_of, arr, partial, spread, max_minutes, sessions, eval_tf, slip_entry, slip_stop)
         if cand.tradable and as_of >= books["ALL"]["busy"]:
             _record(books["ALL"], cand.best, ctx, cand.confluence, as_of, arr, partial, spread, max_minutes, sessions, eval_tf, slip_entry, slip_stop)
-    out = {"eval_tf": eval_tf, "evals": total, "spread_assumed": spread, "slippage_entry": slip_entry, "slippage_stop": slip_stop,
+    out = {"eval_tf": eval_tf, "evals": total, "spread_assumed": base_spread, "slippage_entry": slip_entry, "slippage_stop": slip_stop,
+           "spread_session_mult": cfg.get("backtest.spread_session_mult", {}) or {}, "spread_news_mult": float(cfg.get("backtest.spread_news_mult", 0) or 0),
            "strategies": {}, "books": {}}
     for n, b in books.items():
         df = pd.DataFrame(b["trades"])

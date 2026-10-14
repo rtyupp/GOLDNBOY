@@ -46,6 +46,7 @@ class Pipeline:
         self.cfg = cfg
         self.analyzer = Analyzer(cfg)
         self.risk = RiskEngine(cfg)
+        self.journal = journal
         self.prob_engine = ProbabilityEngine(journal, cfg) if journal is not None else None
         self.news = news
         keys = only or cfg.get("strategies.enabled", [c.key for c in ALL])
@@ -129,7 +130,7 @@ class Pipeline:
         cand.risk_level = self.risk.risk_level(ctx, best.plan)
         p = best.plan
         lg.set("RISK", f"{T.RISK_LEVEL[cand.risk_level]}  دخول={p.entry} وقف={p.sl} هدف1={p.tp1} هدف2={p.tp2} RR={p.rr1}/{p.rr2}")
-        reasons += no_trade.setup_gates(self.cfg, best, cs, cand.prob if use_probability else None)
+        reasons += no_trade.setup_gates(self.cfg, best, cs, cand.prob if use_probability else None, self.journal)
         cand.reasons = reasons
         return self._done(cand)
 
