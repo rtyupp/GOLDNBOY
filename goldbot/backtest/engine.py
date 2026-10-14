@@ -96,6 +96,25 @@ def split_report(df: pd.DataFrame, frac: float = 0.7) -> dict:
     return {"in_sample": metrics(d.iloc[:k]), "out_of_sample": metrics(d.iloc[k:])}
 
 
+def walk_forward_folds(df: pd.DataFrame, n_folds: int = 4, min_per_fold: int = 5) -> dict:
+    """Rolling chronological folds: each fold's out-of-sample slice is scored on its own.
+    A strategy that only works on one lucky slice fails `consistent` (a single 70/30 split can
+    hide that). Returns {} when the sample is too small to fold meaningfully."""
+    if df.empty or len(df) < n_folds * min_per_fold:
+        return {}
+    d = df.sort_values("ts")
+    size = len(d) // n_folds
+    folds = []
+    for i in range(n_folds):
+        seg = d.iloc[i * size:(i + 1) * size] if i < n_folds - 1 else d.iloc[i * size:]
+        folds.append(metrics(seg))
+    passed = sum(1 for m in folds if m.get("avg_r", 0) > 0 and (m.get("profit_factor") or 0) > 1)
+    avg = float(np.mean([m.get("avg_r", 0.0) for m in folds])) if folds else 0.0
+    return {"folds": folds, "n": len(folds), "passed": passed,
+            "consistent": passed >= (len(folds) + 1) // 2,      # الأغلبية (بما فيها التعادل) يجب أن تكون موجبة
+            "avg_r_folds": round(avg, 3)}
+
+
 def run_backtest(base: pd.DataFrame, cfg, eval_tf: str = "5m", step: int = 1, max_evals: Optional[int] = None,
                  warmup_days: int = 12, only: Optional[List[str]] = None, progress=None) -> dict:
     spread = float(cfg.get("backtest.spread", 0.3))
@@ -158,6 +177,7 @@ def run_backtest(base: pd.DataFrame, cfg, eval_tf: str = "5m", step: int = 1, ma
             rep["by_setup"] = breakdown(df, "setup")
             rep["by_regime"] = breakdown(df, "regime")
             rep["walk_forward_split"] = split_report(df)
+            rep["walk_forward_folds"] = walk_forward_folds(df, n_folds=int(cfg.get("backtest.wf_folds", 4)))
         out["strategies" if n != "ALL" else "combined"] = out["strategies"] if n != "ALL" else rep
         if n != "ALL":
             out["strategies"][n] = rep

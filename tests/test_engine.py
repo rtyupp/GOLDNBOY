@@ -80,6 +80,18 @@ class TestTracker(unittest.TestCase):
         s = self.j.stats()
         self.assertEqual((s["closed"], s["sl"]), (1, 1))
 
+    def test_stats_split_by_regime_and_hour(self):
+        add(self.j, ts="2026-06-01T10:00:00+00:00")       # BULLISH، ساعة 10
+        self.feed(2644)                                        # SL
+        add(self.j, ts="2026-06-01T14:00:00+00:00")       # BULLISH، ساعة 14
+        self.tr.invalidate()
+        self.tr.on_tick(T(self.t0 + 100000, 2662.5))           # TP2
+        s = self.j.stats()
+        self.assertEqual(set(s["by_regime"]), {"BULLISH"})
+        self.assertEqual(s["by_regime"]["BULLISH"]["count"], 2)
+        self.assertEqual(set(s["by_hour"]), {10, 14})
+        self.assertEqual(s["by_hour"][14]["count"], 1)
+
     def test_expiry(self):
         sid = add(self.j, ts="2026-05-30T10:00:00+00:00")
         self.tr.check_expiry(pd.Timestamp("2026-06-01T12:00Z"), 2652.0, 2652.3)

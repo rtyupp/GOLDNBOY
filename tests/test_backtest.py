@@ -2,7 +2,8 @@ import os, tempfile, unittest
 import numpy as np, pandas as pd
 from tests.helpers import cfg
 from goldbot.models import RiskPlan
-from goldbot.backtest.engine import simulate_trade, metrics, run_backtest, store_probability_history
+from goldbot.backtest.engine import simulate_trade, metrics, run_backtest, store_probability_history, walk_forward_folds
+from goldbot.backtest.compare import verdict
 from goldbot.providers.synthetic import make_synthetic_1m
 from goldbot.tracking.journal import Journal
 
@@ -87,6 +88,49 @@ class TestMetrics(unittest.TestCase):
         self.assertAlmostEqual(m["profit_factor"], 3.5 / 3.0, places=2)
         self.assertAlmostEqual(m["max_drawdown_r"], 2.0)
         self.assertAlmostEqual(m["sl_pct"], 0.6)
+
+
+class TestWalkForward(unittest.TestCase):
+    def _df(self, rs):
+        return pd.DataFrame({"r": rs, "outcome": ["TP2" if r > 0 else "SL" for r in rs],
+                             "ts": pd.date_range("2026-01-01", periods=len(rs), freq="1h", tz="UTC")})
+
+    def test_too_small_returns_empty(self):
+        self.assertEqual(walk_forward_folds(self._df([1.0, -1.0, 2.0]), n_folds=4, min_per_fold=5), {})
+
+    def test_consistent_edge_across_folds(self):
+        df = self._df([1.5, 1.0, -1.0] * 8)                 # كل طيّة موجبة
+        wf = walk_forward_folds(df, n_folds=4)
+        self.assertEqual(wf["n"], 4)
+        self.assertTrue(wf["consistent"])
+        self.assertEqual(wf["passed"], 4)
+
+    def test_one_lucky_slice_fails_consistency(self):
+        # الربح كله في الطيّة الأخيرة فقط: التقسيم 70/30 قد يخفي ذلك، والطيّات تكشفه
+        rs = [-1.0] * 18 + [3.0] * 6
+        wf = walk_forward_folds(self._df(rs), n_folds=4)
+        self.assertFalse(wf["consistent"])
+        self.assertLess(wf["passed"], 2)
+
+    def test_verdict_requires_fold_consistency(self):
+        rep = {"total_trades": 40, "avg_r": 0.3, "profit_factor": 1.5,
+               "walk_forward_split": {"out_of_sample": {"avg_r": 0.2}},
+               "walk_forward_folds": {"consistent": False}}
+        self.assertIn("مرفوضة", verdict(rep))
+        rep["walk_forward_folds"]["consistent"] = True
+        self.assertIn("مقبولة", verdict(rep))
+
+    def test_verdict_folds_optional_when_absent(self):
+        rep = {"total_trades": 40, "avg_r": 0.3, "profit_factor": 1.5,
+               "walk_forward_split": {"out_of_sample": {"avg_r": 0.2}}}
+        self.assertIn("مقبولة", verdict(rep))               # لا طيّات (عينة صغيرة) => لا تُفرض
+
+    def test_run_backtest_emits_folds(self):
+        c = cfg()
+        df = make_synthetic_1m(days=16, seed=11)
+        res = run_backtest(df, c, "5m", warmup_days=12, max_evals=400)
+        rep = res["combined"]
+        self.assertIn("walk_forward_folds", rep)
 
 
 class TestRun(unittest.TestCase):

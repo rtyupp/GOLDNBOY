@@ -173,6 +173,7 @@ backtest:
   history_days: 28         # حد 1m في Yahoo (~28 يومًا)
   steps: {1m: 5, 5m: 1, 15m: 1}
   report_dir: reports
+  wf_folds: 4               # عدد الطيّات في التقسيم الزمني المتدرّج (walk-forward) لتقييم الثبات
 
 assist:                     # مساعد DeepSeek: شرح الإشارة + ملخص يومي/أسبوعي + إجابة الأسئلة. لا يقرر ولا يغيّر الصفقات.
   enabled: true             # يعمل تلقائيًا متى وُجد DEEPSEEK_API_KEY في البيئة (بدونه يصمت)
