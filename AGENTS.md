@@ -35,16 +35,14 @@
 - Silver Bullet windows: `strategies.silver_bullet.windows` (UTC, no DST auto-adjust).
 
 ## Filters / gates
-- `filters.block_regimes` (default `[TRANSITION]`): global gate `REGIME_BLOCK(<1H trend>)` in
-  `engine/no_trade.py::global_gates`. Evidence (28d real XAUUSD, 451 raw signals, 5m+15m): TRANSITION
-  avgR -0.357 (totR -114) and ~71% of the time, and it is negative at EVERY confluence band
-  ([0,50) -0.30, [50,55) -0.58, [55,60) -0.95, [60,65) -0.13, [65,70) +0.21, [70,100) -1.03) — so
-  blocking it wholesale is robust, not overfit. BULLISH +0.69, RANGE +0.49. Set to `[]` to disable.
-- `confluence.min_score` (default `50.0`): minimum confluence for a signal. Was `68.4`, which on the
-  same 28d sample selected only losers (5m n=11 avgR -0.52, -5.7R) because it let the losing TRANSITION
-  regime through while filtering out the winning lower-confluence RANGE/BULLISH setups. At `50` with
-  TRANSITION blocked: 5m n=17 avgR +0.11, 15m n=6 avgR +1.01 (both positive; 3/4 folds positive).
-  The scalp profile overrides it to `45`. The score itself is `S×100/95` (news check removed).
+- `filters.block_regimes` (default `[]`): global gate `REGIME_BLOCK(<1H trend>)` in
+  `engine/no_trade.py::global_gates`. Do NOT block `TRANSITION`: it is ~71% of the time on XAUUSD
+  (1H trend), and blocking it nearly silenced the bot — over 4 days tradable signals fell 46 -> 7,
+  i.e. back to the losing pre-fix count. It is a per-regime kill switch, not a quality lever.
+- `confluence.min_score` (default `55.0`): minimum confluence for a signal. Was `68.4`, which on 28d
+  real XAUUSD selected only losers (5m n=11 avgR -0.52, -5.7R). At `55` with NO regime block:
+  5m n=29 avgR -0.03 and 15m n=15 avgR +0.10 (net positive, ~5x the trade count). The scalp profile
+  overrides it to `50`. Score is `S×100/95` (news check removed). This is the correct lever.
 - Capital protection (default OFF, `signals.max_daily_loss_r=0`, `signals.max_consecutive_losses=0`):
   `engine/no_trade.py::capital_gates` runs in `BotApp._apply_limits` only after a candidate is
   already tradable, so empty cycles are not tinted. `DAILY_LOSS_LIMIT(-X R)` sums realized R of
