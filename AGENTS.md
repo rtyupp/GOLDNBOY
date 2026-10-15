@@ -57,9 +57,20 @@
 ## Backtesting / comparing (no fabricated edge)
 - `python -m goldbot compare` now runs baseline / +SMC / +advanced (with costs) / all (no costs),
   and scores EVERY new strategy (`BASELINE_KEYS`, `NEW_KEYS`, `ADVANCED_KEYS` in `backtest/compare.py`).
-- Honest result on 28d: the whole ensemble is negative IS+OOS; loosening gates only adds losers.
-  Only Round Number had a clear positive stat (n=15, avgR +0.40). Never present a small-sample
+- Honest result: the whole ensemble is negative IS+OOS; loosening gates only adds losers.
+  Only Round Number had a clear positive stat. Never present a small-sample
   improvement as proven — check the walk-forward out-of-sample slice and report trade counts.
+- History window (`backtest.history_days`, `bootstrap.days`, default `58`): free Yahoo keeps only
+  ~28 days of 1m but ~58 days of 5m, so a 1m-only base capped the probability sample at ~70 trades.
+  `core/history_store.py::load_backtest_base` stitches **native 5m bars for the older span in front of
+  native 1m bars for the recent ~28 days** (gated by `backtest.extend_with_native_5m`, default true;
+  falls back to 1m-only when the source cannot serve deeper 5m). The sample roughly triples (~300 vs
+  ~70) while the recent window keeps full 1m precision (trade simulation + the 1m `confirm1` flag).
+  Native-5m and resampled-1m give the same trade count over the shared 28d window (48 vs 47), so the
+  seam is not a fidelity problem. Bootstrap on the free 512MB tier (`resources.plan_bootstrap`): set
+  `bootstrap.low_mem_days` (default `45`) **above** the 1m cap (28), or the low-memory plan clamps the
+  window back to 28 and gains nothing. Dukascopy (the only free deeper-1m source) is rate-limited/
+  blocked from cloud hosts, so it cannot extend the 1m cap.
 - Multi-fold walk-forward: `engine/walk_forward_folds` splits the trade list into `backtest.wf_folds`
   (default 4) chronological folds and scores each on its own. `compare.verdict` now also requires
   `walk_forward_folds.consistent` (a majority of folds positive) so a strategy that only wins on one

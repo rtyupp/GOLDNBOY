@@ -161,5 +161,53 @@ class TestRun(unittest.TestCase):
         self.assertTrue(all(os.sep not in f for f in os.listdir(d)))
 
 
+class _Prov:
+    """History provider stub: native 5m deeper than 1m, like free Yahoo (1m=28d, 5m=58d)."""
+    def __init__(self, one_m, five_m, cap1=28, cap5=58):
+        self._d = {"1m": one_m, "5m": five_m}
+        self._cap = {"1m": cap1, "5m": cap5}
+        self.calls = []
+
+    def max_history_days(self, interval):
+        return self._cap.get(interval)
+
+    def fetch(self, interval, start, end):
+        self.calls.append(interval)
+        return self._d.get(interval, pd.DataFrame())
+
+
+class TestBacktestBase(unittest.TestCase):
+    NOW = pd.Timestamp("2026-10-15 12:00", tz="UTC")
+
+    def _bars(self, start, periods, freq):
+        idx = pd.date_range(start, periods=periods, freq=freq, tz="UTC")
+        return pd.DataFrame({"open": 100.0, "high": 101.0, "low": 99.0, "close": 100.0, "volume": 1.0}, index=idx)
+
+    def _load(self, prov, c):
+        from goldbot.core.history_store import load_backtest_base
+        return load_backtest_base(prov, "XAUUSD", c, 58, now=self.NOW)
+
+    def test_stitches_native_5m_before_recent_1m(self):
+        one = self._bars(self.NOW - pd.Timedelta(days=3), 60, "1min")    # recent 1m leg (inside 28d)
+        five = self._bars(self.NOW - pd.Timedelta(days=40), 400, "5min")  # deeper 5m leg (older)
+        base = self._load(_Prov(one, five), cfg(data__cache_dir=tempfile.mkdtemp()))
+        self.assertLess(base.index[0], one.index[0])               # older 5m kept
+        self.assertEqual(base.index[-1], one.index[-1])            # recent 1m kept
+        self.assertFalse(base.index.has_duplicates)
+
+    def test_falls_back_to_1m_when_no_deeper_5m(self):
+        one = self._bars(self.NOW - pd.Timedelta(days=3), 60, "1min")
+        prov = _Prov(one, self._bars(self.NOW - pd.Timedelta(days=40), 400, "5min"), cap1=28, cap5=28)
+        base = self._load(prov, cfg(data__cache_dir=tempfile.mkdtemp()))
+        self.assertEqual(base.index[0], one.index[0])
+
+    def test_flag_disables_extension(self):
+        one = self._bars(self.NOW - pd.Timedelta(days=3), 60, "1min")
+        prov = _Prov(one, self._bars(self.NOW - pd.Timedelta(days=40), 400, "5min"))
+        c = cfg(data__cache_dir=tempfile.mkdtemp(), backtest__extend_with_native_5m=False)
+        base = self._load(prov, c)
+        self.assertEqual(base.index[0], one.index[0])
+
+
 if __name__ == "__main__":
     unittest.main()

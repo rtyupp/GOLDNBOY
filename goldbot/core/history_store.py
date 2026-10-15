@@ -40,3 +40,29 @@ def load_cached(provider, symbol: str, interval: str, days: int, cache_dir: str,
         df = normalize_ohlcv(df)
         df.to_csv(path, compression="gzip")
     return df[df.index >= want_start]
+
+
+def load_backtest_base(provider, symbol: str, cfg, days: int | None = None,
+                       now: pd.Timestamp | None = None) -> pd.DataFrame:
+    """Base series for backtests/bootstrap.
+
+    Free Yahoo keeps ~58 days of 5m but only ~28 days of 1m, so a 1m-only base caps the historical
+    sample. This stitches native 5m bars for the deeper span in front of native 1m bars for the
+    recent span: the probability sample roughly doubles while the recent window keeps full 1m
+    precision (trade simulation and the 1m confirmation flag). Falls back to 1m-only when the source
+    cannot serve deeper 5m (or when `backtest.extend_with_native_5m` is off)."""
+    cache_dir = cfg.get("data.cache_dir", "data/cache")
+    days = int(days or cfg.get("backtest.history_days", 60))
+    now = (now or pd.Timestamp.now(tz="UTC")).floor("1min")
+    cap1 = provider.max_history_days("1m")
+    base1 = load_cached(provider, symbol, "1m", min(days, cap1) if cap1 else days, cache_dir, now)
+    if not cfg.get("backtest.extend_with_native_5m", True) or base1.empty:
+        return base1
+    cap5 = provider.max_history_days("5m")
+    if not cap5 or (cap1 and cap5 <= cap1) or days <= (cap1 or 0):
+        return base1
+    older = load_cached(provider, symbol, "5m", days, cache_dir, now)
+    older = older[older.index < base1.index[0]]
+    if older.empty:
+        return base1
+    return normalize_ohlcv(pd.concat([older, base1]))

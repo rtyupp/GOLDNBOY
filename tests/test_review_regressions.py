@@ -70,7 +70,7 @@ class TestBacktestProgressLambda(unittest.TestCase):
 
         a = SimpleNamespace(tf="all", days=1, step=None, store=False)
         c = cfg(paths__journal=os.path.join(tempfile.mkdtemp(), "j.sqlite"), paths__log_dir=tempfile.mkdtemp())
-        with mock.patch.object(main, "_history_1m", return_value=base), \
+        with mock.patch.object(main, "_history_base", return_value=base), \
                 mock.patch.object(engine, "run_backtest", fake_run_backtest), \
                 mock.patch.object(engine, "save_report", lambda *x, **k: "r.json"), \
                 contextlib.redirect_stdout(io.StringIO()):
@@ -146,8 +146,9 @@ class TestBootstrapWindow(unittest.TestCase):
     def test_unreachable_min_trades_no_longer_loops(self):
         c = cfg()
         min_trades = int(c.get("bootstrap.min_trades", 150))
-        # 28 يومًا (حد 1m في Yahoo) تُنتج نحو 30 صفقة؛ العتبة يجب أن تكون قابلة للتحقيق وإلا أُعيد البناء أبدًا
-        self.assertLessEqual(min_trades, 30)
+        # النافذة الآن 58 يومًا (5m أصلي ~58 + 1m حديث 28) تُنتج ~180 صفقة، فالعتبة قابلة للتحقيق؛
+        # القديمة (150) كانت مستحيلة على 28 يومًا فيُعاد البناء أبدًا. نتحقق أنها ≤ ما تنتجه النافذة.
+        self.assertLessEqual(min_trades, 60)
 
 
 class TestBacktestWarmupScaling(unittest.TestCase):

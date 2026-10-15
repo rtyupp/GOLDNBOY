@@ -49,22 +49,19 @@ def cmd_run(cfg):
     asyncio.run(runner())
 
 
-def _history_1m(cfg, days):
+def _history_base(cfg, days):
     from goldbot.providers.factory import make_history_provider
-    from goldbot.core.history_store import load_cached
+    from goldbot.core.history_store import load_backtest_base
     provider = make_history_provider(cfg)
-    cap = provider.max_history_days("1m")
-    if cap and days > cap:
-        days = cap          # the source cannot serve deeper than this; ask for what exists
-    return load_cached(provider, cfg.get("symbol", "XAUUSD"), "1m", days, cfg.get("data.cache_dir", "data/cache"))
+    return load_backtest_base(provider, cfg.get("symbol", "XAUUSD"), cfg, days)
 
 
 def cmd_backtest(cfg, a):
     from goldbot.backtest.engine import run_backtest, save_report, store_probability_history
     from goldbot.tracking.journal import Journal
     days = a.days or int(cfg.get("backtest.history_days", 60))
-    base = _history_1m(cfg, days)
-    print(f"البيانات التاريخية: {len(base)} شمعة 1m  من {base.index[0]} إلى {base.index[-1]}")
+    base = _history_base(cfg, days)
+    print(f"البيانات التاريخية: {len(base)} شمعة أساس (5m أقدم + 1m حديث) من {base.index[0]} إلى {base.index[-1]}")
     j = Journal(cfg.get("paths.journal", "data/journal.sqlite"))
     tfs = ["1m", "5m", "15m"] if a.tf == "all" else [a.tf]
     for tf in tfs:
@@ -94,8 +91,8 @@ def _news_event_times(cfg):
 def cmd_compare(cfg, a):
     from goldbot.backtest.compare import compare, fmt, save
     days = a.days or int(cfg.get("backtest.history_days", 60))
-    base = _history_1m(cfg, days)
-    print(f"البيانات التاريخية: {len(base)} شمعة 1m  من {base.index[0]} إلى {base.index[-1]}")
+    base = _history_base(cfg, days)
+    print(f"البيانات التاريخية: {len(base)} شمعة أساس (5m أقدم + 1m حديث) من {base.index[0]} إلى {base.index[-1]}")
     tf = "5m" if a.tf == "all" else a.tf
     step = a.step or int(cfg.get(f"backtest.steps.{tf}", 1))
     news = _news_event_times(cfg)
