@@ -337,15 +337,20 @@ class TestWhyCommand(unittest.TestCase):
 
 
 class TestStrategySelectionDefaults(unittest.TestCase):
-    """القيم الافتراضية لعتبة التقاطع وحجب الأنظمة مثبّتة على النتيجة المُتحقَّق منها على بيانات حقيقية:
-    على 28 يومًا لـXAUUSD كان conf>=68.4 بلا حجب يختار صفقات خاسرة فقط (5m: n=11, avgR=-0.52, -5.7R)،
-    بينما conf>=50 مع حجب النظام الانتقالي يجعل 5m موجبًا (n=17, avgR=+0.11) و15m موجبًا (n=6, avgR=+1.01)."""
+    """القيم الافتراضية مثبّتة على ما تحقّقناه على بيانات حقيقية (28 يومًا XAUUSD).
+    مهم: لا نحجب أي نظام افتراضيًا — TRANSITION يشكّل ~71% من الوقت وحجبه خنق الإشارات
+    (4 أيام: الإشارات القابلة للتداول هبطت من 46 إلى 7، أي لا فرق عن الإعداد الخاسر القديم).
+    الإصلاح الصحيح هو خفض عتبة التقاطع فقط."""
 
-    def test_default_threshold_and_regime_block(self):
+    def test_default_threshold(self):
         from goldbot.config import load_config
         c = load_config("config/config.yaml")
-        self.assertLessEqual(c.get("confluence.min_score"), 50.0)
-        self.assertIn("TRANSITION", c.get("filters.block_regimes", []))
+        self.assertLess(c.get("confluence.min_score"), 68.4)
+
+    def test_default_does_not_block_regimes(self):
+        from goldbot.config import load_config
+        c = load_config("config/config.yaml")
+        self.assertEqual(list(c.get("filters.block_regimes") or []), [])
 
     def test_scalp_is_more_sensitive_than_default(self):
         from goldbot.config import load_config
