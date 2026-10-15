@@ -32,7 +32,7 @@ class TestPlan(unittest.TestCase):
         p = self._plan(512.0, 100.0)
         self.assertTrue(p["run"])
         # 7 أيام/15m كانت تُنتج 0 صفقة (المحلل يحتاج 60 شمعة 4H ≈ 10 أيام)؛ الآن نافذة أصغر لكن صالحة
-        self.assertEqual((p["days"], p["tfs"]), (21, ["5m", "15m"]))
+        self.assertEqual((p["days"], p["tfs"]), (45, ["5m", "15m"]))
 
     def test_tiny_memory_skips(self):
         self.assertFalse(self._plan(300.0)["run"])
@@ -88,7 +88,7 @@ class TestBootstrapAdapts(unittest.IsolatedAsyncioTestCase):
             calls.append(cmd); return 0, ""
         ok, msgs, _ = await self._run(runner)
         self.assertEqual(len(calls), 2)                              # 5m و15m: 15m وحده لا يصل لعتبة الالتقاء
-        self.assertIn("21", calls[0]); self.assertIn("5m", calls[0])
+        self.assertIn("45", calls[0]); self.assertIn("5m", calls[0])
 
     async def test_memory_kill_stops_gracefully(self):
         async def runner(cmd, log, timeout):
