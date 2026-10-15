@@ -55,7 +55,10 @@ class JournalSync:
         self.filename = p.get("filename", "goldbot-journal.sqlite")
         self.description = p.get("description", "GOLDNBOY journal backup (private)")
         self.interval = float(p.get("interval_min", 30)) * 60
-        self.token = token or os.environ.get("GITHUB_TOKEN") or ""
+        if token is None:
+            self.token = os.environ.get("GITHUB_TOKEN") or ""
+        else:
+            self.token = token or ""
         self.s = session or requests.Session()
         self.last_error: Optional[str] = None
         self.last_push = 0.0

@@ -32,6 +32,6 @@ class SyntheticHistory(HistoryProvider):
         self.cfg = cfg or {}
 
     def fetch(self, interval, start, end):
-        e = pd.Timestamp.now(tz="UTC").floor("1min") if self.cfg.get("end") == "now" else None
+        e = pd.Timestamp.now(tz="UTC").floor("1min") if self.cfg.get("end", "now") == "now" else None
         df = make_synthetic_1m(days=int(self.cfg.get("days", 30)), seed=int(self.cfg.get("seed", 7)), end=e)
         return df[(df.index >= start) & (df.index <= end)]

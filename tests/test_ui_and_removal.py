@@ -146,7 +146,7 @@ class TestAiNewsRemoved(unittest.TestCase):
         for base, dirs, files in os.walk(ROOT):
             # vendor/dukascopy-node is third-party source; its instrument metadata
             # may contain legitimate company names matching the product guard.
-            dirs[:] = [d for d in dirs if d not in (".git", "__pycache__", "reports", "logs", "vendor")]
+            dirs[:] = [d for d in dirs if d not in (".git", "__pycache__", "reports", "logs", "vendor", ".venv", ".pytest_cache", "node_modules")]
             for f in files:
                 if f.endswith((".pyc", ".png", ".zip", ".sqlite")) or f == "test_ui_and_removal.py":
                     continue
@@ -171,7 +171,7 @@ class TestAiNewsRemoved(unittest.TestCase):
     def test_no_secret_like_strings_in_code(self):
         pat = re.compile(r"\d{8,10}:[A-Za-z0-9_-]{30,}|AIza[0-9A-Za-z_-]{30,}|sk-[A-Za-z0-9]{20,}")
         for base, dirs, files in os.walk(ROOT):
-            dirs[:] = [d for d in dirs if d not in (".git", "__pycache__")]
+            dirs[:] = [d for d in dirs if d not in (".git", "__pycache__", ".venv", ".pytest_cache", "node_modules")]
             for f in files:
                 if f.endswith((".py", ".yaml", ".yml", ".md", ".example", ".sh", ".txt")):
                     t = open(os.path.join(base, f), encoding="utf-8", errors="ignore").read()
